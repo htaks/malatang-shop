@@ -306,7 +306,10 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   })
 
   test('achievements screen opens from title', async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.waitForTimeout(300)
     await page.click('text=🏅 実績')
@@ -316,7 +319,10 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   })
 
   test('skill tree opens from title', async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.waitForTimeout(300)
     await page.click('text=⬆️ スキル')
@@ -326,7 +332,10 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   })
 
   test('daily challenge shows on title screen', async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.waitForTimeout(300)
     const text = await getBodyText(page)
@@ -336,7 +345,6 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   test('daily challenge shows in game', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('malatang_tutorial_done', '1')
-      // Suppress daily bonus to go straight to game
       localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
     })
     await page.goto('/')
@@ -348,7 +356,10 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
 
   test('VIP customer can appear in game (type check)', async ({ page }) => {
     // Just verify the game starts and functions without error
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.click('text=1人プレイ')
     await page.waitForTimeout(1000)
@@ -357,7 +368,10 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   })
 
   test('version shows v5.0.0', async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     const text = await getBodyText(page)
     expect(text).toContain('v5.0.0')
