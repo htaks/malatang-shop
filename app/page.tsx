@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Character, { emojiToCharType, type Expression } from './components/Character'
+import ShopOwner, { type OwnerMood } from './components/ShopOwner'
 import ConveyorBeltComponent from './components/ConveyorBelt'
 import PotComponent from './components/Pot'
 import { CoinBurst, ConfettiEffect, AngerSmoke, AnimatedScore } from './components/Particles'
@@ -3078,6 +3079,18 @@ export default function MalatangGame() {
   const showConveyor = dayCfg.hasConveyor
   const showConveyorNewBadge = showConveyor && Date.now() < conveyorNewBadgeUntil
 
+  // Derive shop owner mood from game state
+  const ownerMood: OwnerMood = (() => {
+    if (serveFeedback?.correct && combo >= 3) return 'celebrating'
+    if (serveFeedback?.correct) return 'excited'
+    if (serveFeedback && !serveFeedback.correct) return satisfaction < 30 ? 'angry' : 'sad'
+    if (timerPct < 20) return 'panicked'
+    if (combo >= 2) return 'happy'
+    if (satisfaction < 40) return 'sad'
+    if (isServing) return 'working'
+    return 'calm'
+  })()
+
   // For Day 1: static ingredient grid instead of conveyor
   const day1Ingredients = !showConveyor ? getUnlockedIngredients(shopStage).slice(0, 8) : []
 
@@ -3141,7 +3154,12 @@ export default function MalatangGame() {
       >
         {/* ── TOP BAR ── */}
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-1 shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
+          {/* Shop owner (left side, small) */}
+          <div className="shrink-0 -mb-2">
+            <ShopOwner mood={ownerMood} size={52} />
+          </div>
+          <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
             <span className="text-orange-300 text-sm font-black whitespace-nowrap">📅 Day {dayIndex}</span>
             <span className="text-orange-500/40 text-xs">·</span>
             <span className="text-orange-300/60 text-xs whitespace-nowrap">{customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
@@ -3156,12 +3174,15 @@ export default function MalatangGame() {
                 {combo}🔥×{comboMultiplier}
               </span>
             )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-yellow-400 font-black text-sm whitespace-nowrap">💰<AnimatedScore value={score} /></span>
+              {dayCfg.hasRival && (
+                <span className="text-red-400/70 text-xs whitespace-nowrap">🤖{rivalScore.toLocaleString()}</span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {dayCfg.hasRival && (
-              <span className="text-red-400/70 text-xs whitespace-nowrap">🤖{rivalScore.toLocaleString()}</span>
-            )}
-            <span className="text-yellow-400 font-black text-sm whitespace-nowrap">💰<AnimatedScore value={score} /></span>
+          <div className="flex items-center gap-1 shrink-0">
             <button onClick={() => setShowRecipeBook(true)} className="text-orange-300 hover:text-orange-100 text-base" title="レシピ本">📖</button>
           </div>
         </div>
