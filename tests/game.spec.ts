@@ -15,6 +15,10 @@ async function getTitleText(page: Page): Promise<string> {
 async function skipTutorial(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('malatang_tutorial_done', '1')
+    // Suppress daily bonus modal for existing tests
+    localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    localStorage.setItem('malatang_loginStreak', '1')
+    localStorage.setItem('malatang_bonusDayIndex', '0')
   })
 }
 
@@ -330,7 +334,11 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
   })
 
   test('daily challenge shows in game', async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_tutorial_done', '1')
+      // Suppress daily bonus to go straight to game
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.click('text=1人プレイ')
     await page.waitForTimeout(1000)
