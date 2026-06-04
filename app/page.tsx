@@ -1797,8 +1797,11 @@ export default function MalatangGame() {
             <span className="text-orange-400 text-sm font-bold">{STAGE_INFO[shopStage].name}</span>
             <span className="text-orange-500/40 text-xs">|</span>
             <span className="text-orange-300/60 text-xs">Day{dayIndex} {customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
+            {isP2Mode && phase === 'playing' && (
+              <span className="bg-blue-700/60 text-blue-200 text-xs px-2 py-0.5 rounded-full font-bold">👤 P1のターン</span>
+            )}
             {phase === 'p2playing' && (
-              <span className="bg-purple-700/60 text-purple-200 text-xs px-2 py-0.5 rounded-full font-bold">P2番</span>
+              <span className="bg-purple-700/60 text-purple-200 text-xs px-2 py-0.5 rounded-full font-bold">👤 P2のターン</span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
