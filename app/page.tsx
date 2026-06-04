@@ -574,7 +574,10 @@ function generateOrder(level: number, prevOrder: CustomerOrder | null, customerI
   const cfg = dayConfig
   const allowSpecial = cfg ? cfg.hasSpecialCustomers : true
   const type = allowSpecial ? pickCustomerType(customerIndex, luckLevel, isBossSlot) : 'normal'
-  const unlockedIds = getUnlockedIngredients(stage).map(i => i.id)
+  // On Day 1 (no conveyor), restrict to the 8 ingredients shown in the static grid
+  const allUnlocked = getUnlockedIngredients(stage)
+  const visibleUnlocked = cfg && !cfg.hasConveyor ? allUnlocked.slice(0, 8) : allUnlocked
+  const unlockedIds = visibleUnlocked.map(i => i.id)
 
   const configMax = cfg ? cfg.maxIngredients : undefined
 
@@ -2051,8 +2054,11 @@ export default function MalatangGame() {
       // Every 5th customer (0-indexed: 4, 9, 14...) is a boss
       const isBossSlot = globalIdx > 0 && (globalIdx + 1) % 5 === 0
       const order = generateOrder(lv, prev, globalIdx, stage, dayConfig, luckLv, isBossSlot)
-      // Filter to available stock
-      const availableIds = NON_SPICE_IDS.filter(id => (currentStock[id] ?? 0) > 0)
+      // Filter to available stock — on Day 1 (no conveyor) restrict to the 8 visible grid items
+      const visibleIds = (dayConfig && !dayConfig.hasConveyor)
+        ? getUnlockedIngredients(stage).slice(0, 8).map(i => i.id)
+        : NON_SPICE_IDS
+      const availableIds = visibleIds.filter(id => (currentStock[id] ?? 0) > 0)
       const filtered = order.ingredients.filter(id => availableIds.includes(id))
       const maxIng = dayConfig ? dayConfig.maxIngredients : 5
       const finalIngredients = filtered.length >= 1 ? filtered.slice(0, maxIng) : shuffle(availableIds).slice(0, Math.max(1, Math.min(2, Math.min(maxIng, availableIds.length))))
@@ -3292,7 +3298,7 @@ export default function MalatangGame() {
             </>
           ) : (
             <>
-              <p className="text-orange-400/70 text-xs mb-2 font-bold">🥘 食材を選ぼう！（クリックして鍋に入れる）</p>
+              <p className="text-orange-400/70 text-xs mb-2 font-bold">🥘 食材を選ぼう！（タップして鍋に入れる）</p>
               <div className="grid grid-cols-4 gap-2">
                 {day1Ingredients.map(ing => {
                   const isInPot = potIngredients.some(p => p.includes(ing.id))
@@ -3311,12 +3317,13 @@ export default function MalatangGame() {
                       }}
                       className={`rounded-xl p-2 flex flex-col items-center gap-1 border-2 transition-all active:scale-95
                         ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
-                          inOrder ? 'border-orange-400 bg-orange-900/60 shadow-lg shadow-orange-500/20' :
+                          inOrder ? 'border-yellow-400 bg-yellow-900/50 shadow-lg shadow-yellow-500/30 animate-pulse scale-105' :
                           'border-orange-800/40 bg-orange-950/60 hover:border-orange-600'}`}
                     >
                       <span className="text-2xl">{ing.emoji}</span>
-                      <span className="text-xs text-orange-200">{ing.name}</span>
+                      <span className={`text-xs font-bold ${inOrder && !isInPot ? 'text-yellow-300' : 'text-orange-200'}`}>{ing.name}</span>
                       {isInPot && <span className="text-green-400 text-xs">✅</span>}
+                      {inOrder && !isInPot && <span className="text-yellow-400 text-xs">👆</span>}
                     </button>
                   )
                 })}
@@ -3341,9 +3348,11 @@ export default function MalatangGame() {
                   className={`flex-1 rounded-xl p-2 flex flex-col items-center gap-0.5 transition-all border-2 active:scale-95
                     ${isSelected && inOrder ? 'border-green-400 bg-green-900/60' :
                       isSelected && !inOrder ? 'border-red-400 bg-red-900/60' :
+                      inOrder && !isSelected ? 'border-yellow-400 bg-yellow-900/40 animate-pulse' :
                       'border-transparent bg-orange-950/60 hover:bg-orange-900/80'}`}>
                   <span className="text-xl">{ing.emoji}</span>
-                  <span className="text-xs text-orange-100">{ing.name}</span>
+                  <span className={`text-xs ${inOrder && !isSelected ? 'text-yellow-300 font-bold' : 'text-orange-100'}`}>{ing.name}</span>
+                  {inOrder && !isSelected && <span className="text-yellow-400 text-xs">👆</span>}
                 </button>
               )
             })}
