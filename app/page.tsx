@@ -3385,6 +3385,13 @@ export default function MalatangGame() {
             </div>
           )}
 
+          {/* ── SPICE BADGE (Day 1: 普通 fixed) ── */}
+          {!dayCfg.hasSpiceChoice && (
+            <div className="px-3 shrink-0">
+              <span className="text-xs bg-orange-900/40 border border-orange-700/40 text-orange-300 px-2 py-0.5 rounded-full">🌶️ 普通（固定）</span>
+            </div>
+          )}
+
           {/* ── SPICE ROW (Day 2+ only) ── */}
           {dayCfg.hasSpiceChoice && activeTableId !== null && (
             <div className="px-3 shrink-0">
