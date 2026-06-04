@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #1a0a00;
+}
+
+@layer utilities {
+  .pot-glow {
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.4), 0 0 60px rgba(251, 146, 60, 0.2);
+  }
+
+  .steam-particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    animation: steam 1.5s ease-out infinite;
+  }
+}
