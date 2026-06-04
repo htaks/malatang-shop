@@ -11,9 +11,198 @@ import { useBGM } from './hooks/useBGM'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Category = 'vegetable' | 'protein' | 'noodle' | 'spice'
-type CustomerType = 'normal' | 'impatient' | 'allergic' | 'regular' | 'hungry'
-type GamePhase = 'title' | 'playing' | 'procurement' | 'result' | 'leaderboard' | 'p2playing' | 'p2result' | 'dayclear'
+type CustomerType = 'normal' | 'impatient' | 'allergic' | 'regular' | 'hungry' | 'vip' | 'boss'
+type GamePhase = 'title' | 'playing' | 'procurement' | 'result' | 'leaderboard' | 'p2playing' | 'p2result' | 'dayclear' | 'skillTree' | 'achievements' | 'dailyBonus'
 type ShopStage = 1 | 2 | 3 | 4
+
+// ─── Skill Tree Types ─────────────────────────────────────────────────────────
+
+interface SkillTree {
+  cookSpeed: 0 | 1 | 2 | 3
+  patience: 0 | 1 | 2 | 3
+  luck: 0 | 1 | 2 | 3
+}
+
+const SKILL_COSTS = [200, 400, 800] as const
+
+function loadSkillTree(): SkillTree {
+  if (typeof window === 'undefined') return { cookSpeed: 0, patience: 0, luck: 0 }
+  try {
+    const raw = localStorage.getItem('malatang_skillTree')
+    if (!raw) return { cookSpeed: 0, patience: 0, luck: 0 }
+    return JSON.parse(raw) as SkillTree
+  } catch { return { cookSpeed: 0, patience: 0, luck: 0 } }
+}
+
+function saveSkillTree(st: SkillTree) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem('malatang_skillTree', JSON.stringify(st)) } catch {}
+}
+
+function loadTotalCoins(): number {
+  if (typeof window === 'undefined') return 0
+  try { return parseInt(localStorage.getItem('malatang_totalCoins') ?? '0', 10) } catch { return 0 }
+}
+
+function saveTotalCoins(n: number) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem('malatang_totalCoins', String(n)) } catch {}
+}
+
+// ─── Achievement Types ────────────────────────────────────────────────────────
+
+type AchievementId =
+  | 'firstPerfect'
+  | 'combo3'
+  | 'speedStar'
+  | 'coins100'
+  | 'streak3'
+  | 'master'
+  | 'teamwork'
+  | 'spicyMaster'
+
+interface Achievement {
+  id: AchievementId
+  emoji: string
+  title: string
+  description: string
+}
+
+const ACHIEVEMENTS: Achievement[] = [
+  { id: 'firstPerfect', emoji: '🍜', title: '初めての一杯', description: '初めてパーフェクトオーダー達成' },
+  { id: 'combo3', emoji: '🔥', title: '3連コンボ', description: '3コンボ達成' },
+  { id: 'speedStar', emoji: '⚡', title: 'スピードスター', description: '20秒以上残してパーフェクト' },
+  { id: 'coins100', emoji: '💰', title: '100コイン', description: '1ゲームで100コイン以上獲得' },
+  { id: 'streak3', emoji: '📅', title: '3日連続', description: '3日連続ログイン' },
+  { id: 'master', emoji: '🏆', title: '達人', description: 'Day 5 クリア' },
+  { id: 'teamwork', emoji: '👥', title: 'チームワーク', description: '2Pモードでプレイ' },
+  { id: 'spicyMaster', emoji: '🌶️', title: '激辛マスター', description: '激辛オーダーを5回正解' },
+]
+
+function loadAchievements(): Set<AchievementId> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem('malatang_achievements')
+    if (!raw) return new Set()
+    return new Set(JSON.parse(raw) as AchievementId[])
+  } catch { return new Set() }
+}
+
+function saveAchievements(set: Set<AchievementId>) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem('malatang_achievements', JSON.stringify(Array.from(set))) } catch {}
+}
+
+// ─── Daily Bonus Types ────────────────────────────────────────────────────────
+
+const DAILY_BONUS_COINS = [100, 100, 150, 100, 100, 150, 500] as const
+
+function checkDailyBonus(): { shouldShow: boolean; streak: number; bonusIndex: number; coins: number } {
+  if (typeof window === 'undefined') return { shouldShow: false, streak: 0, bonusIndex: 0, coins: 0 }
+  try {
+    const lastLogin = localStorage.getItem('malatang_lastLoginDate')
+    const streak = parseInt(localStorage.getItem('malatang_loginStreak') ?? '0', 10)
+    const bonusIdx = parseInt(localStorage.getItem('malatang_bonusDayIndex') ?? '0', 10)
+    const today = new Date().toDateString()
+    if (lastLogin === today) return { shouldShow: false, streak, bonusIndex: bonusIdx, coins: 0 }
+    const yesterday = new Date(Date.now() - 86400000).toDateString()
+    const isConsecutive = lastLogin === yesterday
+    const newStreak = isConsecutive ? streak + 1 : 1
+    const newBonusIdx = isConsecutive ? (bonusIdx + 1) % DAILY_BONUS_COINS.length : 0
+    const coins = DAILY_BONUS_COINS[newBonusIdx]
+    localStorage.setItem('malatang_lastLoginDate', today)
+    localStorage.setItem('malatang_loginStreak', String(newStreak))
+    localStorage.setItem('malatang_bonusDayIndex', String(newBonusIdx))
+    return { shouldShow: true, streak: newStreak, bonusIndex: newBonusIdx, coins }
+  } catch { return { shouldShow: false, streak: 0, bonusIndex: 0, coins: 0 } }
+}
+
+function loadPendingBonusCoins(): number {
+  if (typeof window === 'undefined') return 0
+  try { return parseInt(localStorage.getItem('malatang_pendingBonus') ?? '0', 10) } catch { return 0 }
+}
+
+function savePendingBonusCoins(n: number) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem('malatang_pendingBonus', String(n)) } catch {}
+}
+
+// ─── Daily Challenge ──────────────────────────────────────────────────────────
+
+interface DailyChallenge {
+  id: string
+  description: string
+  checkFn: (stats: GameStats) => boolean
+  reward: number
+}
+
+interface GameStats {
+  perfectOrders: number
+  combos: number
+  spicyCorrect: number
+  timeBonus: number
+  vipSatisfied: number
+  score: number
+}
+
+const DAILY_CHALLENGES: DailyChallenge[] = [
+  { id: 'perfect5', description: '5分以内に5杯完璧に提供', checkFn: (s) => s.perfectOrders >= 5, reward: 300 },
+  { id: 'combo3', description: 'コンボ3回達成', checkFn: (s) => s.combos >= 3, reward: 300 },
+  { id: 'spicy3', description: '激辛を3杯提供', checkFn: (s) => s.spicyCorrect >= 3, reward: 300 },
+  { id: 'timeBonus200', description: 'タイムボーナスで200コイン獲得', checkFn: (s) => s.timeBonus >= 200, reward: 300 },
+  { id: 'vip1', description: 'VIPお客様を満足させる', checkFn: (s) => s.vipSatisfied >= 1, reward: 300 },
+]
+
+function getTodayChallenge(): DailyChallenge {
+  const dayOfYear = Math.floor(Date.now() / 86400000)
+  return DAILY_CHALLENGES[dayOfYear % DAILY_CHALLENGES.length]
+}
+
+function isDailyChallengeCompleted(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const stored = localStorage.getItem('malatang_dailyChallengeDate')
+    return stored === new Date().toDateString()
+  } catch { return false }
+}
+
+function markDailyChallengeCompleted() {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem('malatang_dailyChallengeDate', new Date().toDateString()) } catch {}
+}
+
+// ─── Weekly Leaderboard helpers ───────────────────────────────────────────────
+
+function getWeekStart(): string {
+  const d = new Date()
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Monday
+  const mon = new Date(d.setDate(diff))
+  return mon.toDateString()
+}
+
+function getNextMonday(): Date {
+  const d = new Date()
+  const day = d.getDay()
+  const daysUntilMon = day === 0 ? 1 : 8 - day
+  return new Date(Date.now() + daysUntilMon * 86400000)
+}
+
+function formatCountdown(ms: number): string {
+  const h = Math.floor(ms / 3600000)
+  const m = Math.floor((ms % 3600000) / 60000)
+  return `${h}時間${m}分`
+}
+
+// ─── Haptic Feedback ──────────────────────────────────────────────────────────
+
+function haptic(pattern: number | number[]) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(pattern)
+    }
+  } catch {}
+}
 
 // ─── Day Config ───────────────────────────────────────────────────────────────
 
@@ -364,13 +553,16 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-function pickCustomerType(index: number): CustomerType {
+function pickCustomerType(index: number, luckLevel: 0 | 1 | 2 | 3 = 0, isBossSlot = false): CustomerType {
+  if (isBossSlot) return 'boss'
   if (index === 0) return 'normal'
+  const vipChance = 0.05 + (luckLevel === 1 ? 0.05 : luckLevel === 2 ? 0.10 : luckLevel === 3 ? 0.15 : 0)
   const roll = Math.random()
-  if (roll < 0.20) return 'impatient'
-  if (roll < 0.35) return 'allergic'
-  if (roll < 0.50) return 'regular'
-  if (roll < 0.60) return 'hungry'
+  if (roll < vipChance) return 'vip'
+  if (roll < vipChance + 0.20) return 'impatient'
+  if (roll < vipChance + 0.35) return 'allergic'
+  if (roll < vipChance + 0.50) return 'regular'
+  if (roll < vipChance + 0.60) return 'hungry'
   return 'normal'
 }
 
@@ -378,10 +570,10 @@ function getUnlockedIngredients(stage: ShopStage): Ingredient[] {
   return NON_SPICE.filter(i => !i.unlockStage || i.unlockStage <= stage)
 }
 
-function generateOrder(level: number, prevOrder: CustomerOrder | null, customerIndex: number, stage: ShopStage, dayConfig?: DayConfig): CustomerOrder {
+function generateOrder(level: number, prevOrder: CustomerOrder | null, customerIndex: number, stage: ShopStage, dayConfig?: DayConfig, luckLevel: 0 | 1 | 2 | 3 = 0, isBossSlot = false): CustomerOrder {
   const cfg = dayConfig
   const allowSpecial = cfg ? cfg.hasSpecialCustomers : true
-  const type = allowSpecial ? pickCustomerType(customerIndex) : 'normal'
+  const type = allowSpecial ? pickCustomerType(customerIndex, luckLevel, isBossSlot) : 'normal'
   const unlockedIds = getUnlockedIngredients(stage).map(i => i.id)
 
   const configMax = cfg ? cfg.maxIngredients : undefined
@@ -391,12 +583,18 @@ function generateOrder(level: number, prevOrder: CustomerOrder | null, customerI
 
   if (type === 'hungry') {
     minIngredients = 6; maxIngredients = 7
+  } else if (type === 'vip') {
+    minIngredients = 4; maxIngredients = 5
+  } else if (type === 'boss') {
+    // Boss always uses max ingredients
+    const mx = configMax ?? 5
+    minIngredients = mx; maxIngredients = mx
   } else {
     minIngredients = level >= 3 ? 4 : level === 2 ? 3 : 2
     maxIngredients = level >= 3 ? 5 : level === 2 ? 4 : 3
   }
 
-  if (configMax !== undefined) {
+  if (configMax !== undefined && type !== 'boss') {
     minIngredients = Math.min(minIngredients, configMax)
     maxIngredients = Math.min(maxIngredients, configMax)
   }
@@ -429,15 +627,21 @@ function generateOrder(level: number, prevOrder: CustomerOrder | null, customerI
   return { ingredients, spiceLevel, customerEmoji: customer.emoji, customerName: customer.name, customerType: type, forbiddenIngredients }
 }
 
-function getTimerForLevel(level: number, type: CustomerType, dayConfig?: DayConfig): number {
+function getTimerForLevel(level: number, type: CustomerType, dayConfig?: DayConfig, cookSpeedLevel: 0 | 1 | 2 | 3 = 0): number {
   const base = dayConfig ? dayConfig.timerSeconds : (level >= 3 ? 20 : level === 2 ? 25 : 30)
   const hasAnger = dayConfig ? dayConfig.hasAngerMeter : true
-  return (hasAnger && type === 'impatient') ? Math.floor(base / 2) : base
+  let t = (hasAnger && type === 'impatient') ? Math.floor(base / 2) : base
+  if (type === 'boss') t = Math.floor(t * 0.8) // 20% shorter for boss
+  // Cook speed skill boosts effective timer (more time to cook)
+  const speedMulti = cookSpeedLevel === 1 ? 1.1 : cookSpeedLevel === 2 ? 1.2 : cookSpeedLevel === 3 ? 1.3 : 1
+  return Math.round(t * speedMulti)
 }
 
-function getAngerDuration(type: CustomerType, stage: ShopStage): number {
+function getAngerDuration(type: CustomerType, stage: ShopStage, patienceLevel: 0 | 1 | 2 | 3 = 0): number {
   const base = type === 'impatient' ? 15 : 25
-  return Math.max(10, base - (stage - 1) * 2)
+  const dur = Math.max(10, base - (stage - 1) * 2)
+  const patienceMulti = patienceLevel === 1 ? 1.1 : patienceLevel === 2 ? 1.2 : patienceLevel === 3 ? 1.3 : 1
+  return Math.round(dur * patienceMulti)
 }
 
 function customerTypeBadge(type: CustomerType): { label: string; color: string } | null {
@@ -446,6 +650,8 @@ function customerTypeBadge(type: CustomerType): { label: string; color: string }
     case 'allergic':  return { label: '⚠️ アレルギー', color: 'bg-red-700 text-red-100' }
     case 'regular':   return { label: '🌟 常連さん', color: 'bg-blue-700 text-blue-100' }
     case 'hungry':    return { label: '🍖 大食い', color: 'bg-purple-700 text-purple-100' }
+    case 'vip':       return { label: '👑 VIP', color: 'bg-yellow-500 text-black' }
+    case 'boss':      return { label: '⚠️ ボス客', color: 'bg-red-900 text-red-100' }
     default: return null
   }
 }
@@ -475,6 +681,24 @@ function getRank(score: number): string {
 
 // ─── Leaderboard helpers ──────────────────────────────────────────────────────
 
+function loadWeeklyLeaderboard(): LeaderboardEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const weekKey = `malatang_weekly_${getWeekStart()}`
+    const raw = localStorage.getItem(weekKey)
+    return raw ? (JSON.parse(raw) as LeaderboardEntry[]) : []
+  } catch { return [] }
+}
+
+function saveWeeklyLeaderboard(entries: LeaderboardEntry[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const weekKey = `malatang_weekly_${getWeekStart()}`
+    const sorted = [...entries].sort((a, b) => b.score - a.score).slice(0, 10)
+    localStorage.setItem(weekKey, JSON.stringify(sorted))
+  } catch {}
+}
+
 function loadLeaderboard(): LeaderboardEntry[] {
   if (typeof window === 'undefined') return []
   try {
@@ -485,12 +709,14 @@ function loadLeaderboard(): LeaderboardEntry[] {
 
 function saveLeaderboard(entries: LeaderboardEntry[]) {
   if (typeof window === 'undefined') return
-  const sorted = [...entries].sort((a, b) => b.score - a.score).slice(0, 10)
-  localStorage.setItem('malatang_leaderboard_v3', JSON.stringify(sorted))
+  try {
+    const sorted = [...entries].sort((a, b) => b.score - a.score).slice(0, 10)
+    localStorage.setItem('malatang_leaderboard_v3', JSON.stringify(sorted))
+  } catch {}
 }
 
 function qualifiesForLeaderboard(score: number): boolean {
-  const board = loadLeaderboard()
+  const board = loadWeeklyLeaderboard()
   if (board.length < 10) return score > 0
   return score > board[board.length - 1].score
 }
@@ -794,98 +1020,6 @@ function ProcurementScreen({ day, budget, stock, stage, onDone }: ProcurementScr
   )
 }
 
-// Leaderboard Screen
-function LeaderboardScreen({ onBack, currentScore, isPostGame, onNameSubmit }: {
-  onBack: () => void
-  currentScore?: number
-  isPostGame?: boolean
-  onNameSubmit?: (name: string) => void
-}) {
-  const [board, setBoard] = useState<LeaderboardEntry[]>([])
-  const [nameInput, setNameInput] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-
-  useEffect(() => {
-    setBoard(loadLeaderboard())
-  }, [])
-
-  const showNameEntry = isPostGame && currentScore !== undefined && qualifiesForLeaderboard(currentScore) && !submitted
-
-  function handleSubmit() {
-    if (!nameInput.trim() || currentScore === undefined) return
-    const entry: LeaderboardEntry = {
-      name: nameInput.trim().slice(0, 12),
-      score: currentScore,
-      stage: STAGE_INFO[getStageFromScore(currentScore)].name,
-      date: new Date().toLocaleDateString('ja-JP'),
-    }
-    const newBoard = [...board, entry].sort((a, b) => b.score - a.score).slice(0, 10)
-    saveLeaderboard(newBoard)
-    setBoard(newBoard)
-    setSubmitted(true)
-    if (onNameSubmit) onNameSubmit(nameInput.trim())
-  }
-
-  return (
-    <main className="min-h-screen flex flex-col items-center p-4 select-none">
-      <div className="max-w-md w-full animate-fadeIn">
-        <div className="text-center mb-6">
-          <div className="text-5xl mb-2">🏆</div>
-          <h1 className="text-3xl font-black text-orange-300">ランキング</h1>
-        </div>
-
-        {showNameEntry && (
-          <div className="bg-yellow-950/60 border border-yellow-600/40 rounded-2xl p-4 mb-6 animate-slideUp">
-            <p className="text-yellow-300 font-bold text-sm mb-2">🎉 ランクイン！名前を入力してください</p>
-            <div className="flex gap-2">
-              <input
-                type="text" maxLength={12}
-                value={nameInput}
-                onChange={e => setNameInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder="プレイヤー名"
-                className="flex-1 bg-orange-950 border border-orange-700 rounded-xl px-3 py-2 text-orange-200 text-sm outline-none focus:border-orange-500"
-              />
-              <button onClick={handleSubmit}
-                className="bg-gradient-to-r from-yellow-600 to-orange-500 text-white font-bold px-4 py-2 rounded-xl text-sm active:scale-95">
-                登録
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-orange-950/60 border border-orange-800/40 rounded-2xl overflow-hidden mb-6">
-          {board.length === 0 ? (
-            <div className="p-8 text-center text-orange-400/50 text-sm">まだ記録がありません</div>
-          ) : (
-            board.map((entry, i) => {
-              const isCurrentGame = isPostGame && currentScore !== undefined && entry.score === currentScore && submitted
-              return (
-                <div key={i}
-                  className={`flex items-center gap-3 px-4 py-3 border-b border-orange-800/30 last:border-b-0 ${isCurrentGame ? 'bg-yellow-900/30' : ''}`}>
-                  <span className="text-lg font-black w-6 text-center">
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}
-                  </span>
-                  <div className="flex-1">
-                    <div className="text-orange-200 font-bold text-sm">{entry.name}</div>
-                    <div className="text-orange-400/60 text-xs">{entry.stage} · {entry.date}</div>
-                  </div>
-                  <span className="text-yellow-400 font-black">{entry.score.toLocaleString()}</span>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        <button onClick={onBack}
-          className="w-full bg-orange-950 border border-orange-700 hover:bg-orange-900 text-orange-300 font-bold py-3 rounded-xl transition-all active:scale-95">
-          ← 戻る
-        </button>
-      </div>
-    </main>
-  )
-}
-
 // ConveyorBelt is imported from components/ConveyorBelt.tsx
 
 // Customer Queue
@@ -1176,12 +1310,432 @@ function DayStartBanner({ dayIndex }: { dayIndex: number }) {
   )
 }
 
+// ─── Daily Bonus Modal ────────────────────────────────────────────────────────
+
+interface DailyBonusModalProps {
+  streak: number
+  bonusIndex: number
+  coins: number
+  streakBroke: boolean
+  onClose: () => void
+}
+
+function DailyBonusModal({ streak, bonusIndex, coins, streakBroke, onClose }: DailyBonusModalProps) {
+  const isBigDay = bonusIndex === 6
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      <motion.div
+        className={`border-4 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center ${isBigDay ? 'bg-gradient-to-b from-yellow-700 to-orange-800 border-yellow-300' : 'bg-gradient-to-b from-orange-900 to-orange-950 border-orange-500'}`}
+        initial={{ scale: 0.5, opacity: 0, rotate: -5 }}
+        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+      >
+        {streakBroke ? (
+          <>
+            <div className="text-5xl mb-3">😢</div>
+            <h2 className="text-2xl font-black text-orange-300 mb-2">ストリーク終了</h2>
+            <p className="text-orange-200/80 mb-4">でもまた始めよう！</p>
+          </>
+        ) : (
+          <>
+            <motion.div
+              className="text-6xl mb-3 inline-block"
+              animate={{ rotate: [0, -15, 15, -10, 10, -5, 5, 0], scale: [1, 1.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 1 }}
+            >
+              🎁
+            </motion.div>
+            <h2 className={`text-3xl font-black mb-1 ${isBigDay ? 'text-yellow-200' : 'text-orange-300'}`}>
+              デイリーボーナス！
+            </h2>
+            <p className="text-orange-200/80 mb-2">{streak}日連続プレイ中🔥</p>
+          </>
+        )}
+        <div className="flex justify-center gap-1 mb-4">
+          {DAILY_BONUS_COINS.map((c, i) => (
+            <div key={i} className={`flex flex-col items-center px-1 ${i === bonusIndex ? 'scale-110' : ''}`}>
+              <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold
+                ${i < bonusIndex ? 'bg-orange-600 border-orange-400 text-white' :
+                  i === bonusIndex ? 'bg-yellow-400 border-yellow-200 text-black' :
+                  'bg-orange-950 border-orange-700 text-orange-500'}`}>
+                {i === 6 ? '🌟' : c}
+              </div>
+              <div className="text-orange-400/50 text-xs mt-0.5">{i + 1}日</div>
+            </div>
+          ))}
+        </div>
+        <motion.div
+          className={`text-4xl font-black mb-4 ${isBigDay ? 'text-yellow-300' : 'text-yellow-400'}`}
+          initial={{ scale: 0.5 }}
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ delay: 0.5, duration: 0.5 }}
+        >
+          +{coins} コイン！
+        </motion.div>
+        <motion.button
+          onClick={onClose}
+          className="w-full bg-gradient-to-r from-red-600 to-orange-500 text-white font-black text-lg py-3 rounded-2xl"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+        >
+          受け取る！
+        </motion.button>
+      </motion.div>
+    </div>
+  )
+}
+
+// ─── Skill Tree Screen ────────────────────────────────────────────────────────
+
+interface SkillTreeScreenProps {
+  skillTree: SkillTree
+  totalCoins: number
+  onUpgrade: (branch: keyof SkillTree) => void
+  onBack: () => void
+}
+
+const SKILL_BRANCHES: Array<{ key: keyof SkillTree; emoji: string; name: string; descriptions: string[] }> = [
+  { key: 'cookSpeed', emoji: '🍳', name: '調理速度', descriptions: ['調理時間 -10%', '調理時間 -20%', '調理時間 -30%'] },
+  { key: 'patience', emoji: '😊', name: '接客力', descriptions: ['お客の待ち時間 +10%', 'お客の待ち時間 +20%', 'お客の待ち時間 +30%'] },
+  { key: 'luck', emoji: '⭐', name: '運', descriptions: ['VIP出現率 +5%\nコンボ確率 +5%', 'VIP出現率 +10%\nコンボ確率 +10%', 'VIP出現率 +15%\nコンボ確率 +20%'] },
+]
+
+function SkillTreeScreen({ skillTree, totalCoins, onUpgrade, onBack }: SkillTreeScreenProps) {
+  return (
+    <main className="min-h-screen flex flex-col items-center p-4 select-none">
+      <div className="max-w-md w-full animate-fadeIn">
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-2">⬆️</div>
+          <h1 className="text-3xl font-black text-orange-300">スキルツリー</h1>
+          <p className="text-yellow-400 font-bold mt-1">💰 所持コイン: {totalCoins.toLocaleString()}</p>
+        </div>
+        <div className="space-y-4 mb-6">
+          {SKILL_BRANCHES.map(branch => {
+            const currentLevel = skillTree[branch.key]
+            return (
+              <div key={branch.key} className="bg-orange-950/60 border border-orange-800/40 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">{branch.emoji}</span>
+                  <span className="text-orange-200 font-black text-base">{branch.name}</span>
+                  <span className="ml-auto text-orange-400/60 text-sm">Lv {currentLevel}/3</span>
+                </div>
+                <div className="flex gap-2">
+                  {[1, 2, 3].map(lv => {
+                    const isUnlocked = currentLevel >= lv
+                    const canUpgrade = currentLevel === lv - 1
+                    const cost = SKILL_COSTS[lv - 1]
+                    const canAfford = totalCoins >= cost
+                    return (
+                      <div key={lv} className={`flex-1 rounded-xl p-2 border text-center ${isUnlocked ? 'border-yellow-500 bg-yellow-900/30' : 'border-orange-800/40 bg-orange-950/60'}`}>
+                        <div className={`text-xs mb-1 leading-tight whitespace-pre-line ${isUnlocked ? 'text-yellow-200' : 'text-orange-400/50'}`}>
+                          {isUnlocked ? branch.descriptions[lv - 1] : `Lv${lv}\n${branch.descriptions[lv - 1]}`}
+                        </div>
+                        {isUnlocked ? (
+                          <div className="text-yellow-400 text-xs font-bold">✅ 習得済</div>
+                        ) : canUpgrade ? (
+                          <button
+                            onClick={() => onUpgrade(branch.key)}
+                            disabled={!canAfford}
+                            className={`w-full text-xs font-bold py-1 rounded-lg transition-all active:scale-95
+                              ${canAfford ? 'bg-gradient-to-r from-red-600 to-orange-500 text-white hover:from-red-500' : 'bg-orange-900 text-orange-500 cursor-not-allowed'}`}
+                          >
+                            {cost}💰
+                          </button>
+                        ) : (
+                          <div className="text-orange-600/40 text-xs">🔒 {cost}💰</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <button onClick={onBack}
+          className="w-full bg-orange-950 border border-orange-700 hover:bg-orange-900 text-orange-300 font-bold py-3 rounded-xl transition-all active:scale-95">
+          ← 戻る
+        </button>
+      </div>
+    </main>
+  )
+}
+
+// ─── Achievements Screen ──────────────────────────────────────────────────────
+
+interface AchievementsScreenProps {
+  unlocked: Set<AchievementId>
+  onBack: () => void
+}
+
+function AchievementsScreen({ unlocked, onBack }: AchievementsScreenProps) {
+  return (
+    <main className="min-h-screen flex flex-col items-center p-4 select-none">
+      <div className="max-w-md w-full animate-fadeIn">
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-2">🏅</div>
+          <h1 className="text-3xl font-black text-orange-300">実績</h1>
+          <p className="text-orange-400/60 text-sm">{unlocked.size}/{ACHIEVEMENTS.length} 解除済み</p>
+        </div>
+        <div className="space-y-3 mb-6">
+          {ACHIEVEMENTS.map(ach => {
+            const isUnlocked = unlocked.has(ach.id)
+            return (
+              <div key={ach.id} className={`flex items-center gap-3 rounded-2xl p-4 border ${isUnlocked ? 'border-yellow-500/60 bg-yellow-900/20' : 'border-orange-800/40 bg-orange-950/60'}`}>
+                <span className={`text-3xl ${isUnlocked ? '' : 'grayscale opacity-30'}`}>{ach.emoji}</span>
+                <div>
+                  <div className={`font-black text-sm ${isUnlocked ? 'text-yellow-200' : 'text-orange-500/50'}`}>
+                    {isUnlocked ? ach.title : '???'}
+                  </div>
+                  <div className={`text-xs ${isUnlocked ? 'text-orange-200/70' : 'text-orange-600/40'}`}>
+                    {ach.description}
+                  </div>
+                </div>
+                {isUnlocked && <div className="ml-auto text-yellow-400 text-lg">✅</div>}
+              </div>
+            )
+          })}
+        </div>
+        <button onClick={onBack}
+          className="w-full bg-orange-950 border border-orange-700 hover:bg-orange-900 text-orange-300 font-bold py-3 rounded-xl transition-all active:scale-95">
+          ← 戻る
+        </button>
+      </div>
+    </main>
+  )
+}
+
+// ─── Achievement Toast ────────────────────────────────────────────────────────
+
+function AchievementToast({ achievement, onDone }: { achievement: Achievement; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000)
+    return () => clearTimeout(t)
+  }, [onDone])
+  return (
+    <motion.div
+      className="fixed bottom-6 left-1/2 z-50 pointer-events-none"
+      style={{ x: '-50%' }}
+      initial={{ y: 80, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 80, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <div className="bg-gradient-to-r from-yellow-700 to-orange-600 border-2 border-yellow-400 rounded-2xl px-6 py-3 shadow-2xl flex items-center gap-3">
+        <span className="text-3xl">{achievement.emoji}</span>
+        <div>
+          <div className="text-white font-black text-sm">実績解除！</div>
+          <div className="text-yellow-200 font-bold text-xs">{achievement.title}</div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── VIP Overlay ──────────────────────────────────────────────────────────────
+
+function VIPOverlay({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2500)
+    return () => clearTimeout(t)
+  }, [onDone])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <motion.div
+        className="bg-gradient-to-br from-yellow-600 to-amber-700 border-4 border-yellow-300 rounded-3xl px-10 py-8 shadow-2xl text-center"
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+      >
+        <motion.div className="text-6xl mb-2" animate={{ rotate: [0, -10, 10, -5, 5, 0], scale: [1, 1.2, 1] }} transition={{ duration: 0.8 }}>
+          👑
+        </motion.div>
+        <div className="text-2xl font-black text-white">VIPお客様登場！</div>
+        <div className="text-yellow-200 text-sm mt-1">パーフェクトで +300コイン！</div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ─── Boss Warning ─────────────────────────────────────────────────────────────
+
+function BossWarning({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2000)
+    return () => clearTimeout(t)
+  }, [onDone])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <motion.div
+        className="bg-gradient-to-br from-red-900 to-red-950 border-4 border-red-500 rounded-3xl px-10 py-8 shadow-2xl text-center"
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1, x: [0, -5, 5, -3, 3, 0] }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+      >
+        <div className="text-5xl mb-2">⚠️</div>
+        <div className="text-2xl font-black text-red-300">手強いお客様！</div>
+        <div className="text-red-200/80 text-sm mt-1">パーフェクトで 2倍コイン！</div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ─── Challenge Complete Banner ────────────────────────────────────────────────
+
+function ChallengeCompleteBanner({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000)
+    return () => clearTimeout(t)
+  }, [onDone])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <motion.div
+        className="bg-gradient-to-br from-green-700 to-teal-700 border-4 border-green-400 rounded-3xl px-10 py-8 shadow-2xl text-center"
+        initial={{ scale: 0.5, opacity: 0, y: -40 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.8, opacity: 0, y: -40 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+      >
+        <div className="text-5xl mb-2">🎯</div>
+        <div className="text-2xl font-black text-white">チャレンジ達成！</div>
+        <div className="text-green-200 text-lg font-bold mt-1">+300 コイン！</div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ─── Weekly Leaderboard Screen ────────────────────────────────────────────────
+
+function LeaderboardScreen({ onBack, currentScore, isPostGame, onNameSubmit }: {
+  onBack: () => void
+  currentScore?: number
+  isPostGame?: boolean
+  onNameSubmit?: (name: string) => void
+}) {
+  const [board, setBoard] = useState<LeaderboardEntry[]>([])
+  const [nameInput, setNameInput] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [countdown, setCountdown] = useState('')
+
+  useEffect(() => {
+    setBoard(loadWeeklyLeaderboard())
+    const updateCountdown = () => {
+      const next = getNextMonday()
+      const ms = next.getTime() - Date.now()
+      setCountdown(ms > 0 ? formatCountdown(ms) : '間もなくリセット')
+    }
+    updateCountdown()
+    const iv = setInterval(updateCountdown, 60000)
+    return () => clearInterval(iv)
+  }, [])
+
+  const showNameEntry = isPostGame && currentScore !== undefined && qualifiesForLeaderboard(currentScore) && !submitted
+
+  function handleSubmit() {
+    if (!nameInput.trim() || currentScore === undefined) return
+    const entry: LeaderboardEntry = {
+      name: nameInput.trim().slice(0, 12),
+      score: currentScore,
+      stage: STAGE_INFO[getStageFromScore(currentScore)].name,
+      date: new Date().toLocaleDateString('ja-JP'),
+    }
+    const newBoard = [...board, entry].sort((a, b) => b.score - a.score).slice(0, 10)
+    saveWeeklyLeaderboard(newBoard)
+    saveLeaderboard(newBoard)
+    setBoard(newBoard)
+    setSubmitted(true)
+    if (onNameSubmit) onNameSubmit(nameInput.trim())
+  }
+
+  return (
+    <main className="min-h-screen flex flex-col items-center p-4 select-none">
+      <div className="max-w-md w-full animate-fadeIn">
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-2">🏆</div>
+          <h1 className="text-3xl font-black text-orange-300">今週のランキング 🏆</h1>
+          <p className="text-orange-400/60 text-xs mt-1">次のリセットまで: {countdown}</p>
+        </div>
+
+        {showNameEntry && (
+          <div className="bg-yellow-950/60 border border-yellow-600/40 rounded-2xl p-4 mb-6 animate-slideUp">
+            <p className="text-yellow-300 font-bold text-sm mb-2">🎉 ランクイン！名前を入力してください</p>
+            <div className="flex gap-2">
+              <input
+                type="text" maxLength={12}
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                placeholder="プレイヤー名"
+                className="flex-1 bg-orange-950 border border-orange-700 rounded-xl px-3 py-2 text-orange-200 text-sm outline-none focus:border-orange-500"
+              />
+              <button onClick={handleSubmit}
+                className="bg-gradient-to-r from-yellow-600 to-orange-500 text-white font-bold px-4 py-2 rounded-xl text-sm active:scale-95">
+                登録
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-orange-950/60 border border-orange-800/40 rounded-2xl overflow-hidden mb-6">
+          {board.length === 0 ? (
+            <div className="p-8 text-center text-orange-400/50 text-sm">今週はまだ記録がありません</div>
+          ) : (
+            board.map((entry, i) => {
+              const isCurrentGame = isPostGame && currentScore !== undefined && entry.score === currentScore && submitted
+              return (
+                <div key={i}
+                  className={`flex items-center gap-3 px-4 py-3 border-b border-orange-800/30 last:border-b-0 ${isCurrentGame ? 'bg-yellow-900/30' : ''}`}>
+                  <span className="text-lg font-black w-6 text-center">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}
+                  </span>
+                  <div className="flex-1">
+                    <div className="text-orange-200 font-bold text-sm">{entry.name}</div>
+                    <div className="text-orange-400/60 text-xs">{entry.stage} · {entry.date}</div>
+                  </div>
+                  <span className="text-yellow-400 font-black">{entry.score.toLocaleString()}</span>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        <button onClick={onBack}
+          className="w-full bg-orange-950 border border-orange-700 hover:bg-orange-900 text-orange-300 font-bold py-3 rounded-xl transition-all active:scale-95">
+          ← 戻る
+        </button>
+      </div>
+    </main>
+  )
+}
+
 // ─── Main Game Component ──────────────────────────────────────────────────────
 
 export default function MalatangGame() {
   const [phase, setPhase] = useState<GamePhase>('title')
   const [tutorialStep, setTutorialStep] = useState(0)
   const [isTutorialActive, setIsTutorialActive] = useState(false)
+
+  // ── New: Game Theory Features ────────────────────────────────────────────────
+  // Daily bonus
+  const [dailyBonusInfo, setDailyBonusInfo] = useState<{ streak: number; bonusIndex: number; coins: number; streakBroke: boolean } | null>(null)
+  const [bonusCoinsPending, setBonusCoinsPending] = useState(0)
+  // Skill tree
+  const [skillTree, setSkillTree] = useState<SkillTree>({ cookSpeed: 0, patience: 0, luck: 0 })
+  const [totalCoins, setTotalCoins] = useState(0)
+  // Achievements
+  const [achievements, setAchievements] = useState<Set<AchievementId>>(new Set())
+  const [pendingAchievement, setPendingAchievement] = useState<Achievement | null>(null)
+  // Daily challenge
+  const [dailyChallenge] = useState<DailyChallenge>(() => getTodayChallenge())
+  const [challengeCompleted, setChallengeCompleted] = useState(false)
+  const [showChallengeBanner, setShowChallengeBanner] = useState(false)
+  const [gameStats, setGameStats] = useState<GameStats>({ perfectOrders: 0, combos: 0, spicyCorrect: 0, timeBonus: 0, vipSatisfied: 0, score: 0 })
+  // VIP / Boss
+  const [showVIPOverlay, setShowVIPOverlay] = useState(false)
+  const [showBossWarning, setShowBossWarning] = useState(false)
+  const [spicyCorrectCount, setSpicyCorrectCount] = useState(0)
 
   // Staged difficulty
   const [shownDayBanner, setShownDayBanner] = useState(false)
@@ -1274,6 +1828,46 @@ export default function MalatangGame() {
     serve: serveRef as React.RefObject<HTMLElement | null>,
     score: customerRef as React.RefObject<HTMLElement | null>,
   }
+
+  // ── Initialize localStorage-based state on mount ─────────────────────────────
+
+  useEffect(() => {
+    const st = loadSkillTree()
+    setSkillTree(st)
+    const tc = loadTotalCoins()
+    setTotalCoins(tc)
+    const ach = loadAchievements()
+    setAchievements(ach)
+    const challengeDone = isDailyChallengeCompleted()
+    setChallengeCompleted(challengeDone)
+
+    // Check daily bonus
+    const bonus = checkDailyBonus()
+    if (bonus.shouldShow) {
+      const streakBroke = bonus.streak === 1 && bonus.bonusIndex === 0
+      setDailyBonusInfo({ streak: bonus.streak, bonusIndex: bonus.bonusIndex, coins: bonus.coins, streakBroke })
+      setBonusCoinsPending(bonus.coins)
+      savePendingBonusCoins(bonus.coins)
+      // Check achievement streak3
+      if (bonus.streak >= 3) {
+        setAchievements(prev => {
+          if (prev.has('streak3')) return prev
+          const next = new Set(prev)
+          next.add('streak3')
+          saveAchievements(next)
+          setPendingAchievement(ACHIEVEMENTS.find(a => a.id === 'streak3') ?? null)
+          return next
+        })
+      }
+    } else {
+      // Load pending bonus from previous session if not yet used
+      const pending = loadPendingBonusCoins()
+      if (pending > 0) {
+        setBonusCoinsPending(pending)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Now ticker for anger meters ──────────────────────────────────────────────
 
@@ -1448,12 +2042,15 @@ export default function MalatangGame() {
 
   // ── Queue management ──────────────────────────────────────────────────────────
 
-  const spawnCustomersForQueue = useCallback((lv: number, stage: ShopStage, prevOrd: CustomerOrder | null, currentStock: Stock, startIdx: number, dayConfig?: DayConfig) => {
+  const spawnCustomersForQueue = useCallback((lv: number, stage: ShopStage, prevOrd: CustomerOrder | null, currentStock: Stock, startIdx: number, dayConfig?: DayConfig, luckLv: 0 | 1 | 2 | 3 = 0, patienceLv: 0 | 1 | 2 | 3 = 0) => {
     const numToSpawn = Math.min(3 + Math.floor(Math.random() * 2), CUSTOMERS_PER_DAY)
     const newQueue: QueuedCustomer[] = []
     let prev = prevOrd
     for (let i = 0; i < numToSpawn; i++) {
-      const order = generateOrder(lv, prev, startIdx + i, stage, dayConfig)
+      const globalIdx = startIdx + i
+      // Every 5th customer (0-indexed: 4, 9, 14...) is a boss
+      const isBossSlot = globalIdx > 0 && (globalIdx + 1) % 5 === 0
+      const order = generateOrder(lv, prev, globalIdx, stage, dayConfig, luckLv, isBossSlot)
       // Filter to available stock
       const availableIds = NON_SPICE_IDS.filter(id => (currentStock[id] ?? 0) > 0)
       const filtered = order.ingredients.filter(id => availableIds.includes(id))
@@ -1465,7 +2062,7 @@ export default function MalatangGame() {
         id,
         order: finalOrder,
         angerStart: Date.now(),
-        angerDuration: getAngerDuration(order.customerType, stage),
+        angerDuration: getAngerDuration(order.customerType, stage, patienceLv),
         left: false,
         reactionEmoji: null,
       })
@@ -1486,7 +2083,11 @@ export default function MalatangGame() {
     const dayCfg = getDayConfig(startDay)
 
     if (resetAll) {
-      setScore(0)
+      // Add pending bonus coins to initial score
+      const bonus = loadPendingBonusCoins()
+      setScore(bonus)
+      setBonusCoinsPending(0)
+      savePendingBonusCoins(0)
       setLevel(lv)
       setShopStage(stage)
       setNumPots(dayCfg.numPots)
@@ -1498,6 +2099,9 @@ export default function MalatangGame() {
       setProcurementBudget(500)
       setShownTooltips(new Set())
       setActiveTooltip(null)
+      setGameStats({ perfectOrders: 0, combos: 0, spicyCorrect: 0, timeBonus: 0, vipSatisfied: 0, score: 0 })
+      setSpicyCorrectCount(0)
+      setChallengeCompleted(isDailyChallengeCompleted())
       // Only reset rival & isP2Mode for a fresh solo game
       if (isP2ModeVal === undefined && !p2) {
         setRivalScore(0)
@@ -1507,7 +2111,8 @@ export default function MalatangGame() {
       }
     }
 
-    const queue = spawnCustomersForQueue(lv, stage, null, stockToUse, 0, dayCfg)
+    const st = loadSkillTree()
+    const queue = spawnCustomersForQueue(lv, stage, null, stockToUse, 0, dayCfg, st.luck, st.patience)
     setCustomerQueue(queue)
     setActiveCustomerId(queue[0]?.id ?? null)
     setPrevOrder(null)
@@ -1519,6 +2124,15 @@ export default function MalatangGame() {
     setCookingItems([])
     setConveyorItems([])
 
+    // Show VIP/Boss announcement for the first customer if applicable
+    const firstOrder = queue[0]?.order ?? null
+    if (firstOrder?.customerType === 'vip') {
+      setShowVIPOverlay(true)
+      haptic([100, 50, 100])
+    } else if (firstOrder?.customerType === 'boss') {
+      setShowBossWarning(true)
+    }
+
     // Show day start banner
     setShowDayBanner(true)
     setTimeout(() => setShowDayBanner(false), 2500)
@@ -1528,8 +2142,7 @@ export default function MalatangGame() {
       setConveyorNewBadgeUntil(Date.now() + 30000)
     }
 
-    const firstOrder = queue[0]?.order ?? null
-    const t = firstOrder ? getTimerForLevel(lv, firstOrder.customerType, dayCfg) : dayCfg.timerSeconds
+    const t = firstOrder ? getTimerForLevel(lv, firstOrder.customerType, dayCfg, st.cookSpeed) : dayCfg.timerSeconds
     startTimer(t)
     setPhase(p2 ? 'p2playing' : 'playing')
   }, [startTimer, spawnCustomersForQueue])
@@ -1606,10 +2219,17 @@ export default function MalatangGame() {
     const newCombo = isPerfect ? combo + 1 : 0
     const multiplier = isPerfect ? Math.min(3, Math.max(1, newCombo)) : 1
 
+    // VIP/Boss reward multipliers
+    const isVIP = order.customerType === 'vip'
+    const isBoss = order.customerType === 'boss'
+    const rewardMult = isVIP ? 3 : isBoss ? 2 : 1
+
     if (isPerfect) {
       const timeBonus = timedOut ? 0 : Math.floor(timeLeft * 2)
-      delta += (100 + timeBonus) * multiplier
+      delta += (100 + timeBonus) * multiplier * rewardMult
+      if (isVIP) delta += 200 // extra VIP bonus
       playSound('coin')
+      haptic([50, 30, 100])
 
       const selectedArr = Array.from(selected)
       const secretCombo = checkSecretCombo(selectedArr)
@@ -1618,10 +2238,12 @@ export default function MalatangGame() {
         setComboOverlay({ name: secretCombo.name, bonus: secretCombo.bonus, emoji: secretCombo.emoji })
         setDiscoveredCombos(prev => new Set([...Array.from(prev), secretCombo.name]))
         playSound('combo')
+        haptic([50, 30, 50, 30, 50])
       }
     } else {
       allCorrect = false
       playSound('error')
+      haptic([200])
     }
 
     const satDelta = isPerfect ? 20 : (allergicPenalty ? -30 : -15)
@@ -1639,6 +2261,65 @@ export default function MalatangGame() {
     setSatisfaction(newSatisfaction)
     setStock(newStock)
     setServeFeedback({ correct: allCorrect, delta, potIndex })
+
+    // ── Achievement & Stats tracking ──────────────────────────────────────────
+    if (isPerfect) {
+      const timeBonusForStats = timedOut ? 0 : Math.floor(timeLeft * 2)
+      const isSpicyOrder = order.spiceLevel === 'spice3'
+      const newSpicyCount = isSpicyOrder ? spicyCorrectCount + 1 : spicyCorrectCount
+      if (isSpicyOrder) setSpicyCorrectCount(newSpicyCount)
+
+      setGameStats(prev => {
+        const updated: GameStats = {
+          perfectOrders: prev.perfectOrders + 1,
+          combos: Math.max(prev.combos, newCombo),
+          spicyCorrect: isSpicyOrder ? prev.spicyCorrect + 1 : prev.spicyCorrect,
+          timeBonus: prev.timeBonus + timeBonusForStats,
+          vipSatisfied: isVIP ? prev.vipSatisfied + 1 : prev.vipSatisfied,
+          score: newScore,
+        }
+        // Check daily challenge
+        if (!challengeCompleted && dailyChallenge.checkFn(updated)) {
+          setChallengeCompleted(true)
+          markDailyChallengeCompleted()
+          setShowChallengeBanner(true)
+          setScore(s => s + 300)
+        }
+        return updated
+      })
+
+      // Check achievements
+      setAchievements(prev => {
+        const next = new Set(prev)
+        let newAch: Achievement | null = null
+        if (!next.has('firstPerfect')) {
+          next.add('firstPerfect')
+          newAch = ACHIEVEMENTS.find(a => a.id === 'firstPerfect') ?? null
+        } else if (!next.has('combo3') && newCombo >= 3) {
+          next.add('combo3')
+          newAch = ACHIEVEMENTS.find(a => a.id === 'combo3') ?? null
+          haptic([50, 30, 50, 30, 50])
+        } else if (!next.has('speedStar') && !timedOut && timeLeft >= 20) {
+          next.add('speedStar')
+          newAch = ACHIEVEMENTS.find(a => a.id === 'speedStar') ?? null
+        } else if (!next.has('coins100') && newScore >= 100) {
+          next.add('coins100')
+          newAch = ACHIEVEMENTS.find(a => a.id === 'coins100') ?? null
+        } else if (!next.has('spicyMaster') && newSpicyCount >= 5) {
+          next.add('spicyMaster')
+          newAch = ACHIEVEMENTS.find(a => a.id === 'spicyMaster') ?? null
+        }
+        if (newAch) {
+          saveAchievements(next)
+          setPendingAchievement(newAch)
+        }
+        return next
+      })
+    }
+
+    // Update totalCoins in localStorage
+    saveTotalCoins(Math.max(0, newScore))
+    setTotalCoins(Math.max(0, newScore))
 
     // Customer reaction
     const reactionEmoji = isPerfect ? '😊' : '😤'
@@ -1677,6 +2358,7 @@ export default function MalatangGame() {
       if (newSatisfaction <= 0) {
         stopTimer()
         bgm.stop()
+        setIsServing(false)
         // In 2P mode: if P1 just finished (playing phase), save P1 score and start P2
         if (isP2Mode && phase === 'playing') {
           setP1Score(newScore)
@@ -1695,7 +2377,15 @@ export default function MalatangGame() {
         const currentDayCfg = getDayConfig(dayIndex)
         if (nextActive) {
           setActiveCustomerId(nextActive.id)
-          const t = getTimerForLevel(level, nextActive.order.customerType, currentDayCfg)
+          const st = loadSkillTree()
+          const t = getTimerForLevel(level, nextActive.order.customerType, currentDayCfg, st.cookSpeed)
+          // Show VIP/Boss overlay for next customer
+          if (nextActive.order.customerType === 'vip') {
+            setShowVIPOverlay(true)
+            haptic([100, 50, 100])
+          } else if (nextActive.order.customerType === 'boss') {
+            setShowBossWarning(true)
+          }
           startTimer(t)
           setIsServing(false)
         } else {
@@ -1708,6 +2398,17 @@ export default function MalatangGame() {
             setDayIndex(nextDay)
             setProcurementBudget(Math.max(0, newScore))
             setIsServing(false)
+            // Check master achievement (Day 5 clear)
+            if (completedDay >= 5) {
+              setAchievements(prev => {
+                if (prev.has('master')) return prev
+                const next = new Set(prev)
+                next.add('master')
+                saveAchievements(next)
+                setPendingAchievement(ACHIEVEMENTS.find(a => a.id === 'master') ?? null)
+                return next
+              })
+            }
             // Show day clear screen (not procurement yet — procurement gated by day config)
             setPendingDayClear(completedDay)
             setPhase('dayclear')
@@ -1726,12 +2427,20 @@ export default function MalatangGame() {
             const newLevel = nextCustomerIndex >= 10 ? 3 : nextCustomerIndex >= 5 ? 2 : 1
             const newStage = getStageFromScore(newScore)
             setLevel(newLevel)
-            const newQueue = spawnCustomersForQueue(newLevel, newStage, order, newStock, nextCustomerIndex, currentDayCfg)
+            const st = loadSkillTree()
+            const newQueue = spawnCustomersForQueue(newLevel, newStage, order, newStock, nextCustomerIndex, currentDayCfg, st.luck, st.patience)
             setCustomerQueue(newQueue)
             const nextCust = newQueue.find(qc => !qc.left)
             if (nextCust) {
               setActiveCustomerId(nextCust.id)
-              const t = getTimerForLevel(newLevel, nextCust.order.customerType, currentDayCfg)
+              const t = getTimerForLevel(newLevel, nextCust.order.customerType, currentDayCfg, st.cookSpeed)
+              // Show VIP/Boss overlay for next customer
+              if (nextCust.order.customerType === 'vip') {
+                setShowVIPOverlay(true)
+                haptic([100, 50, 100])
+              } else if (nextCust.order.customerType === 'boss') {
+                setShowBossWarning(true)
+              }
               startTimer(t)
             }
             setIsServing(false)
@@ -1740,7 +2449,7 @@ export default function MalatangGame() {
         return remaining
       })
     }, 1400)
-  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, dayIndex, isP2Mode, phase, stopTimer, startTimer, spawnCustomersForQueue, beginPlaying])
+  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, dayIndex, isP2Mode, phase, stopTimer, startTimer, spawnCustomersForQueue, beginPlaying, challengeCompleted, dailyChallenge, spicyCorrectCount])
 
   // Keep ref current so the timer effect always calls the latest version
   useEffect(() => { handleServeRef.current = handleServe }, [handleServe])
@@ -1896,6 +2605,21 @@ export default function MalatangGame() {
     }
   }, [pendingDayClear, dayIndex, score, stock, prevOrder, customerIndex, isP2Mode, startTimer, spawnCustomersForQueue])
 
+  // ── Skill tree upgrade handler ────────────────────────────────────────────────
+
+  const handleSkillUpgrade = useCallback((branch: keyof SkillTree) => {
+    const currentLevel = skillTree[branch]
+    if (currentLevel >= 3) return
+    const cost = SKILL_COSTS[currentLevel]
+    if (totalCoins < cost) return
+    const newTree = { ...skillTree, [branch]: (currentLevel + 1) as 0 | 1 | 2 | 3 }
+    setSkillTree(newTree)
+    saveSkillTree(newTree)
+    const newTotal = totalCoins - cost
+    setTotalCoins(newTotal)
+    saveTotalCoins(newTotal)
+  }, [skillTree, totalCoins])
+
   // ── Leaderboard phase ──────────────────────────────────────────────────────────
 
   if (phase === 'leaderboard') {
@@ -1909,10 +2633,50 @@ export default function MalatangGame() {
     )
   }
 
+  // ── Skill Tree phase ────────────────────────────────────────────────────────────
+
+  if (phase === 'skillTree') {
+    return (
+      <SkillTreeScreen
+        skillTree={skillTree}
+        totalCoins={totalCoins}
+        onUpgrade={handleSkillUpgrade}
+        onBack={() => setPhase('title')}
+      />
+    )
+  }
+
+  // ── Achievements phase ──────────────────────────────────────────────────────────
+
+  if (phase === 'achievements') {
+    return (
+      <AchievementsScreen
+        unlocked={achievements}
+        onBack={() => setPhase('title')}
+      />
+    )
+  }
+
+  // ── Daily Bonus phase ───────────────────────────────────────────────────────────
+
+  if (phase === 'dailyBonus' && dailyBonusInfo) {
+    return (
+      <div className="fixed inset-0 z-50">
+        <DailyBonusModal
+          streak={dailyBonusInfo.streak}
+          bonusIndex={dailyBonusInfo.bonusIndex}
+          coins={dailyBonusInfo.coins}
+          streakBroke={dailyBonusInfo.streakBroke}
+          onClose={() => { setDailyBonusInfo(null); setPhase('title') }}
+        />
+      </div>
+    )
+  }
+
   // ── Title screen ───────────────────────────────────────────────────────────────
 
   if (phase === 'title') {
-    const board = loadLeaderboard()
+    const board = loadWeeklyLeaderboard()
     const titleChars = 'マーラータン屋さん'.split('')
     return (
       <main
@@ -1977,7 +2741,7 @@ export default function MalatangGame() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
           >
-            v4.1.0
+            v5.0.0
           </motion.p>
           <motion.p
             className="text-orange-300/70 text-sm mb-8 max-w-sm mx-auto"
@@ -1989,14 +2753,44 @@ export default function MalatangGame() {
             コンベアから食材を取り、複数の鍋で同時に調理しよう！
           </motion.p>
 
+          {/* Daily challenge display */}
           <motion.div
-            className="space-y-3 mb-8"
+            className="bg-green-950/60 border border-green-700/60 rounded-2xl px-4 py-3 mb-4 text-left"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.75 }}
+          >
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-lg">🎯</span>
+              <span className="text-green-300 font-bold text-xs">今日のチャレンジ</span>
+              {challengeCompleted && <span className="ml-auto text-green-400 text-xs font-bold">✅ 達成済み！</span>}
+            </div>
+            <p className="text-green-200/80 text-xs">{dailyChallenge.description}</p>
+          </motion.div>
+
+          {/* Streak info */}
+          {bonusCoinsPending > 0 && (
+            <motion.div
+              className="bg-yellow-950/60 border border-yellow-700/60 rounded-2xl px-4 py-2 mb-4 text-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8 }}
+            >
+              <span className="text-yellow-300 text-sm font-bold">🎁 デイリーボーナス +{bonusCoinsPending}コイン 準備完了！</span>
+            </motion.div>
+          )}
+
+          <motion.div
+            className="space-y-3 mb-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.9 }}
           >
             <motion.button
-              onClick={() => { bgm.start(); startGame(false) }}
+              onClick={() => {
+                if (dailyBonusInfo) { setPhase('dailyBonus'); return }
+                bgm.start(); startGame(false)
+              }}
               className="w-full bg-gradient-to-r from-red-600 to-orange-500 text-white font-black text-xl px-12 py-4 rounded-full shadow-xl"
               whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(239,68,68,0.5)' }}
               whileTap={{ scale: 0.95 }}
@@ -2009,6 +2803,15 @@ export default function MalatangGame() {
                 bgm.start()
                 setIsP2Mode(true)
                 setP1Score(0)
+                // Achievement: teamwork
+                setAchievements(prev => {
+                  if (prev.has('teamwork')) return prev
+                  const next = new Set(prev)
+                  next.add('teamwork')
+                  saveAchievements(next)
+                  setPendingAchievement(ACHIEVEMENTS.find(a => a.id === 'teamwork') ?? null)
+                  return next
+                })
                 startGame(true)
               }}
               className="w-full bg-gradient-to-r from-purple-700 to-pink-600 text-white font-black text-xl px-12 py-4 rounded-full shadow-xl"
@@ -2018,14 +2821,32 @@ export default function MalatangGame() {
               👥 2人対戦モード
             </motion.button>
 
-            <motion.button
-              onClick={() => { setShowLeaderboard(true); setPostGameScore(undefined); setPhase('leaderboard') }}
-              className="w-full bg-orange-950/80 border border-orange-700 text-orange-300 font-bold text-lg px-12 py-3 rounded-full"
-              whileHover={{ scale: 1.03, borderColor: 'rgba(251,146,60,0.8)' }}
-              whileTap={{ scale: 0.97 }}
-            >
-              🏆 ランキング
-            </motion.button>
+            <div className="grid grid-cols-3 gap-2">
+              <motion.button
+                onClick={() => { setPostGameScore(undefined); setPhase('leaderboard') }}
+                className="bg-orange-950/80 border border-orange-700 text-orange-300 font-bold text-sm px-3 py-3 rounded-full"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                🏆 ランキング
+              </motion.button>
+              <motion.button
+                onClick={() => setPhase('skillTree')}
+                className="bg-orange-950/80 border border-orange-700 text-orange-300 font-bold text-sm px-3 py-3 rounded-full"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                ⬆️ スキル
+              </motion.button>
+              <motion.button
+                onClick={() => setPhase('achievements')}
+                className="bg-orange-950/80 border border-orange-700 text-orange-300 font-bold text-sm px-3 py-3 rounded-full"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                🏅 実績
+              </motion.button>
+            </div>
           </motion.div>
 
           {board.length > 0 && (
@@ -2035,7 +2856,7 @@ export default function MalatangGame() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.1 }}
             >
-              <p className="text-orange-400/70 text-xs mb-2 font-bold">🏆 TOP 3</p>
+              <p className="text-orange-400/70 text-xs mb-2 font-bold">🏆 今週のTOP 3</p>
               {board.slice(0, 3).map((entry, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm mb-1">
                   <span>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
@@ -2148,6 +2969,11 @@ export default function MalatangGame() {
                 🏆 登録
               </button>
             )}
+            <button onClick={() => setPhase('skillTree')}
+              className="bg-orange-950 border border-orange-700 hover:bg-orange-900
+                text-orange-300 font-bold text-lg px-6 py-3 rounded-full transition-all active:scale-95">
+              ⬆️ スキル
+            </button>
             <button onClick={() => setPhase('title')}
               className="bg-orange-950 border border-orange-700 hover:bg-orange-900
                 text-orange-300 font-bold text-lg px-8 py-3 rounded-full transition-all active:scale-95">
@@ -2259,6 +3085,18 @@ export default function MalatangGame() {
       <AnimatePresence>
         {comboOverlay && <ComboFlashOverlay combo={comboOverlay} onDone={() => setComboOverlay(null)} />}
       </AnimatePresence>
+      <AnimatePresence>
+        {showVIPOverlay && <VIPOverlay onDone={() => setShowVIPOverlay(false)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showBossWarning && <BossWarning onDone={() => setShowBossWarning(false)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showChallengeBanner && <ChallengeCompleteBanner onDone={() => setShowChallengeBanner(false)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pendingAchievement && <AchievementToast achievement={pendingAchievement} onDone={() => setPendingAchievement(null)} />}
+      </AnimatePresence>
       {showRecipeBook && <RecipeBookModal discovered={discoveredCombos} onClose={() => setShowRecipeBook(false)} />}
 
       {/* Confetti for combo */}
@@ -2308,6 +3146,12 @@ export default function MalatangGame() {
             )}
             {phase === 'p2playing' && (
               <span className="bg-purple-700/60 text-purple-200 text-xs px-2 py-0.5 rounded-full font-bold">👤 P2のターン</span>
+            )}
+            {!challengeCompleted && (
+              <span className="text-green-400/70 text-xs truncate max-w-xs">🎯 {dailyChallenge.description}</span>
+            )}
+            {challengeCompleted && (
+              <span className="text-green-400 text-xs font-bold">🎯✅</span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
