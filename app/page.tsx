@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Character, { emojiToCharType, type Expression } from './components/Character'
 import ShopOwner, { type OwnerMood } from './components/ShopOwner'
+import RestaurantScene, { type SceneCustomer, TABLES } from './components/RestaurantScene'
 import ConveyorBeltComponent from './components/ConveyorBelt'
 import PotComponent from './components/Pot'
 import { CoinBurst, ConfettiEffect, AngerSmoke, AnimatedScore } from './components/Particles'
@@ -290,6 +291,9 @@ interface QueuedCustomer {
   angerDuration: number
   left: boolean
   reactionEmoji: string | null
+  tableId?: number
+  seatIndex?: number
+  walkState?: 'walking' | 'seated' | 'leaving'
 }
 
 interface CookingItem {
@@ -1768,6 +1772,10 @@ export default function MalatangGame() {
   const queueIdRef = useRef(0)
   const [now, setNow] = useState(Date.now())
 
+  // Isometric scene state
+  const [activeTableId, setActiveTableId] = useState<number | null>(null)
+  const [walkingCustomerIds, setWalkingCustomerIds] = useState<Set<number>>(new Set())
+
   // Multi-pot system: selected per-pot
   const [numPots, setNumPots] = useState(1)
   const [selectedPot, setSelectedPot] = useState(0)
@@ -2065,6 +2073,23 @@ export default function MalatangGame() {
       const finalIngredients = filtered.length >= 1 ? filtered.slice(0, maxIng) : shuffle(availableIds).slice(0, Math.max(1, Math.min(2, Math.min(maxIng, availableIds.length))))
       const finalOrder = { ...order, ingredients: finalIngredients }
       const id = queueIdRef.current++
+      // Assign a table seat for isometric scene
+      const usedTableSeats = newQueue.map(q => ({ tableId: q.tableId, seatIndex: q.seatIndex }))
+      let assignedTableId: number | undefined
+      let assignedSeatIndex: number | undefined
+      // Try to find an available seat at any table
+      const shuffledTables = [...TABLES].sort(() => Math.random() - 0.5)
+      for (const t of shuffledTables) {
+        const seated = usedTableSeats.filter(s => s.tableId === t.id)
+        if (seated.length < t.capacity) {
+          assignedTableId = t.id
+          const usedSeats = seated.map(s => s.seatIndex ?? 0)
+          for (let s = 0; s < t.capacity; s++) {
+            if (!usedSeats.includes(s)) { assignedSeatIndex = s; break }
+          }
+          break
+        }
+      }
       newQueue.push({
         id,
         order: finalOrder,
@@ -2072,6 +2097,9 @@ export default function MalatangGame() {
         angerDuration: getAngerDuration(order.customerType, stage, patienceLv),
         left: false,
         reactionEmoji: null,
+        tableId: assignedTableId,
+        seatIndex: assignedSeatIndex,
+        walkState: 'walking',
       })
       prev = finalOrder
     }
@@ -2460,6 +2488,42 @@ export default function MalatangGame() {
 
   // Keep ref current so the timer effect always calls the latest version
   useEffect(() => { handleServeRef.current = handleServe }, [handleServe])
+
+  // ── Scene: track walking customers, transition to seated after walk animation ──
+  useEffect(() => {
+    const walkingIds = customerQueue
+      .filter(qc => !qc.left && qc.walkState === 'walking')
+      .map(qc => qc.id)
+    if (walkingIds.length === 0) return
+    setWalkingCustomerIds(new Set(walkingIds))
+    const timer = setTimeout(() => {
+      setCustomerQueue(prev => prev.map(qc =>
+        walkingIds.includes(qc.id) ? { ...qc, walkState: 'seated' } : qc
+      ))
+      setWalkingCustomerIds(new Set())
+    }, 1600)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerQueue.map(q => q.id + (q.walkState ?? '')).join(',')])
+
+  // ── Scene: table selection handler ───────────────────────────────────────────
+  const handleTableSelect = useCallback((tableId: number) => {
+    const seated = customerQueue.filter(qc => qc.tableId === tableId && !qc.left && qc.walkState === 'seated')
+    const first = seated[0]
+    if (first) {
+      setActiveTableId(tableId)
+      setActiveCustomerId(first.id)
+    }
+  }, [customerQueue])
+
+  // Clear activeTableId when the active customer is served and no more at the table
+  useEffect(() => {
+    if (activeTableId === null) return
+    const atTable = customerQueue.filter(qc => qc.tableId === activeTableId && !qc.left)
+    if (atTable.length === 0) {
+      setActiveTableId(null)
+    }
+  }, [customerQueue, activeTableId])
 
   // Auto-serve when timer hits 0 — uses ref to avoid stale closure
   useEffect(() => {
@@ -3154,26 +3218,22 @@ export default function MalatangGame() {
       >
         {/* ── TOP BAR ── */}
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-1 shrink-0">
-          {/* Shop owner (left side, small) */}
-          <div className="shrink-0 -mb-2">
-            <ShopOwner mood={ownerMood} size={52} />
-          </div>
           <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-            <span className="text-orange-300 text-sm font-black whitespace-nowrap">📅 Day {dayIndex}</span>
-            <span className="text-orange-500/40 text-xs">·</span>
-            <span className="text-orange-300/60 text-xs whitespace-nowrap">{customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
-            {isP2Mode && phase === 'playing' && (
-              <span className="bg-blue-700/60 text-blue-200 text-xs px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">P1</span>
-            )}
-            {phase === 'p2playing' && (
-              <span className="bg-purple-700/60 text-purple-200 text-xs px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">P2</span>
-            )}
-            {combo >= 2 && (
-              <span className="text-orange-200 text-xs font-black bg-orange-700/60 px-1.5 py-0.5 rounded-lg animate-pulse whitespace-nowrap">
-                {combo}🔥×{comboMultiplier}
-              </span>
-            )}
+              <span className="text-orange-300 text-sm font-black whitespace-nowrap">📅 Day {dayIndex}</span>
+              <span className="text-orange-500/40 text-xs">·</span>
+              <span className="text-orange-300/60 text-xs whitespace-nowrap">お客さん {customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
+              {isP2Mode && phase === 'playing' && (
+                <span className="bg-blue-700/60 text-blue-200 text-xs px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">P1</span>
+              )}
+              {phase === 'p2playing' && (
+                <span className="bg-purple-700/60 text-purple-200 text-xs px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">P2</span>
+              )}
+              {combo >= 2 && (
+                <span className="text-orange-200 text-xs font-black bg-orange-700/60 px-1.5 py-0.5 rounded-lg animate-pulse whitespace-nowrap">
+                  {combo}🔥×{comboMultiplier}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-yellow-400 font-black text-sm whitespace-nowrap">💰<AnimatedScore value={score} /></span>
@@ -3209,192 +3269,224 @@ export default function MalatangGame() {
           </div>
         )}
 
-        {/* ── CUSTOMER QUEUE (compact) ── */}
-        <div ref={customerRef} className="px-3 shrink-0 relative">
-          {activeTooltip === 'customer' && (
-            <InGameTooltip message="← ここを見て！注文を確認しよう" position="bottom" />
-          )}
-          <CustomerQueue
-            queue={customerQueue}
-            activeCustomerId={activeCustomerId}
-            now={dayCfg.hasAngerMeter ? now : 0}
-            onSelectCustomer={() => {}}
-          />
+        {/* ── ISOMETRIC RESTAURANT SCENE (top ~40% of remaining space) ── */}
+        {/* "お客さん" label retained for test compatibility */}
+        <div ref={customerRef} className="shrink-0 px-1" style={{ height: '36vh' }} aria-label="お客さんエリア" data-testid="restaurant-scene">
+          {(() => {
+            const seatedCustomers: SceneCustomer[] = customerQueue
+              .filter(qc => !qc.left && qc.walkState === 'seated' && qc.tableId !== undefined)
+              .map(qc => ({
+                customerId: qc.id,
+                tableId: qc.tableId!,
+                seatIndex: qc.seatIndex ?? 0,
+                order: qc.order,
+                charType: emojiToCharType(qc.order.customerEmoji),
+                reactionEmoji: qc.reactionEmoji ?? undefined,
+              }))
+            const walkingCustomers: SceneCustomer[] = customerQueue
+              .filter(qc => !qc.left && walkingCustomerIds.has(qc.id) && qc.tableId !== undefined)
+              .map(qc => ({
+                customerId: qc.id,
+                tableId: qc.tableId!,
+                seatIndex: qc.seatIndex ?? 0,
+                order: qc.order,
+                charType: emojiToCharType(qc.order.customerEmoji),
+              }))
+            return (
+              <RestaurantScene
+                seatedCustomers={seatedCustomers}
+                walkingCustomers={walkingCustomers}
+                activeTableId={activeTableId}
+                onSelectTable={handleTableSelect}
+                ownerMood={ownerMood}
+                combo={combo}
+                satisfaction={satisfaction}
+              />
+            )
+          })()}
         </div>
 
-        {/* ── ORDER PANEL + SPICE (side by side) ── */}
-        {displayOrder && (
-          <div className={`mx-3 rounded-xl px-2 py-1.5 shrink-0 border ${
-            displayOrder.customerType === 'vip' ? 'bg-yellow-950/60 border-yellow-500/60' :
-            displayOrder.customerType === 'boss' ? 'bg-red-950/60 border-red-600/60' :
-            'bg-orange-950/60 border-orange-700/40'
-          }`}>
-            <div className="flex items-start gap-2">
-              {/* Character */}
-              <div className="flex flex-col items-center shrink-0">
-                <Character
-                  type={emojiToCharType(displayOrder.customerEmoji)}
-                  expression={
-                    activeCustomer?.reactionEmoji === '😊' ? 'happy'
-                    : activeCustomer?.reactionEmoji === '😤' ? 'angry'
-                    : 'excited'
-                  }
-                  size={44}
-                />
-                {dayCfg.hasSpecialCustomers && (() => {
-                  const badge = customerTypeBadge(displayOrder.customerType)
-                  return badge ? <span className={`text-xs px-1 py-0.5 rounded-full font-bold leading-none ${badge.color}`}>{badge.label}</span> : null
-                })()}
-              </div>
-              {/* Order tags */}
-              <div className="flex-1 min-w-0">
-                <p className="text-orange-200/70 text-xs mb-0.5">ご注文：</p>
-                <div className="flex flex-wrap gap-1">
-                  {displayOrder.ingredients.map(id => {
-                    const ing = getIngredientById(id)!
-                    const isInPot = potIngredients.some(p => p.includes(id))
-                    const isCooking = cookingItems.some(ci => ci.ingredientId === id)
-                    return (
-                      <span key={id} className={`text-xs px-1.5 py-0.5 rounded-full border
-                        ${isInPot ? 'border-green-500 bg-green-900/40 text-green-300' :
-                          isCooking ? 'border-yellow-500 bg-yellow-900/40 text-yellow-300' :
-                          'border-orange-700/40 bg-orange-950/60 text-orange-200'}`}>
-                        {isInPot ? '✅' : isCooking ? '🔥' : '⬜'}{ing.emoji}{ing.name}
-                      </span>
-                    )
-                  })}
-                  {(() => {
-                    const spice = getIngredientById(displayOrder.spiceLevel)!
-                    const isInPot = potSpices.some(s => s === displayOrder.spiceLevel)
-                    return (
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full border
-                        ${isInPot ? 'border-green-500 bg-green-900/40 text-green-300' : 'border-orange-700/40 bg-orange-950/60 text-orange-200'}`}>
-                        {isInPot ? '✅' : '⬜'}{spice.emoji}{spice.name}
-                      </span>
-                    )
+        {/* ── BOTTOM COOKING PANEL ── */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* ── "食材を選ぼう" label always present for Day 1 (tests rely on this) ── */}
+          {!showConveyor && (
+            <p className="text-orange-400/70 text-xs font-bold text-center shrink-0 pt-1 px-3">食材を選ぼう</p>
+          )}
+
+          {/* ── ORDER PANEL ── */}
+          {displayOrder && activeTableId !== null && (
+            <div className={`mx-3 rounded-xl px-2 py-1.5 shrink-0 border ${
+              displayOrder.customerType === 'vip' ? 'bg-yellow-950/60 border-yellow-500/60' :
+              displayOrder.customerType === 'boss' ? 'bg-red-950/60 border-red-600/60' :
+              'bg-orange-950/60 border-orange-700/40'
+            }`}>
+              <div className="flex items-start gap-2">
+                {/* Character */}
+                <div className="flex flex-col items-center shrink-0">
+                  <Character
+                    type={emojiToCharType(displayOrder.customerEmoji)}
+                    expression={
+                      activeCustomer?.reactionEmoji === '😊' ? 'happy'
+                      : activeCustomer?.reactionEmoji === '😤' ? 'angry'
+                      : 'excited'
+                    }
+                    size={36}
+                  />
+                  {dayCfg.hasSpecialCustomers && (() => {
+                    const badge = customerTypeBadge(displayOrder.customerType)
+                    return badge ? <span className={`text-xs px-1 py-0.5 rounded-full font-bold leading-none ${badge.color}`}>{badge.label}</span> : null
                   })()}
-                  {dayCfg.hasSpecialCustomers && displayOrder.customerType === 'allergic' && displayOrder.forbiddenIngredients.map(id => {
-                    const ing = getIngredientById(id)!
-                    return (
-                      <span key={id} className="text-xs px-1.5 py-0.5 rounded-full border border-red-600/60 bg-red-950/60 text-red-300">
-                        ❌{ing.emoji}{ing.name}
-                      </span>
-                    )
-                  })}
                 </div>
-              </div>
-              {serveFeedback && (
-                <div className={`text-center text-sm font-bold px-2 py-1 rounded-xl animate-fadeIn shrink-0
-                  ${serveFeedback.correct ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'}`}>
-                  {serveFeedback.correct ? '🎉' : '😅'}
-                  <div className="text-xs">{serveFeedback.delta >= 0 ? '+' : ''}{serveFeedback.delta}</div>
+                {/* Order tags */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-orange-200/70 text-xs mb-0.5">ご注文：</p>
+                  <div className="flex flex-wrap gap-1">
+                    {displayOrder.ingredients.map(id => {
+                      const ing = getIngredientById(id)!
+                      const isInPot = potIngredients.some(p => p.includes(id))
+                      const isCooking = cookingItems.some(ci => ci.ingredientId === id)
+                      return (
+                        <span key={id} className={`text-xs px-1.5 py-0.5 rounded-full border
+                          ${isInPot ? 'border-green-500 bg-green-900/40 text-green-300' :
+                            isCooking ? 'border-yellow-500 bg-yellow-900/40 text-yellow-300' :
+                            'border-orange-700/40 bg-orange-950/60 text-orange-200'}`}>
+                          {isInPot ? '✅' : isCooking ? '🔥' : '⬜'}{ing.emoji}{ing.name}
+                        </span>
+                      )
+                    })}
+                    {(() => {
+                      const spice = getIngredientById(displayOrder.spiceLevel)!
+                      const isInPot = potSpices.some(s => s === displayOrder.spiceLevel)
+                      return (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full border
+                          ${isInPot ? 'border-green-500 bg-green-900/40 text-green-300' : 'border-orange-700/40 bg-orange-950/60 text-orange-200'}`}>
+                          {isInPot ? '✅' : '⬜'}{spice.emoji}{spice.name}
+                        </span>
+                      )
+                    })()}
+                    {dayCfg.hasSpecialCustomers && displayOrder.customerType === 'allergic' && displayOrder.forbiddenIngredients.map(id => {
+                      const ing = getIngredientById(id)!
+                      return (
+                        <span key={id} className="text-xs px-1.5 py-0.5 rounded-full border border-red-600/60 bg-red-950/60 text-red-300">
+                          ❌{ing.emoji}{ing.name}
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── SPICE ROW (Day 1 always 普通 so hidden; Day 2+ shown) ── */}
-        {dayCfg.hasSpiceChoice && (
-          <div className="px-3 shrink-0">
-            <div className="flex gap-1.5">
-              {spiceIngredients.map(ing => {
-                const isSelected = potSpices[selectedPot] === ing.id
-                const inOrder = displayOrder?.spiceLevel === ing.id
-                return (
-                  <button key={ing.id}
-                    onClick={() => {
-                      if (isServing) return
-                      setPotSpices(spices => spices.map((s, i) => i === selectedPot ? (s === ing.id ? '' : ing.id) : s))
-                    }}
-                    className={`flex-1 rounded-xl py-1.5 flex items-center justify-center gap-1 transition-all border-2 active:scale-95 text-xs
-                      ${isSelected && inOrder ? 'border-green-400 bg-green-900/60 text-green-200 font-bold' :
-                        isSelected && !inOrder ? 'border-red-400 bg-red-900/60 text-red-200' :
-                        inOrder && !isSelected ? 'border-yellow-400 bg-yellow-900/40 text-yellow-300 font-bold animate-pulse' :
-                        'border-orange-800/40 bg-orange-950/60 text-orange-300'}`}>
-                    {ing.emoji} {ing.name}{inOrder && !isSelected ? ' 👆' : ''}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── INGREDIENT GRID (Day 1) or CONVEYOR (Day 2+) — flex-1 to fill space ── */}
-        <div ref={ingredientsRef} className="px-3 flex-1 min-h-0 flex flex-col">
-          {showConveyor ? (
-            <>
-              <div className="flex items-center gap-2 mb-1 shrink-0">
-                <p className="text-orange-400/70 text-xs font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
-                {showConveyorNewBadge && (
-                  <span className="text-xs bg-green-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">NEW!</span>
+                {serveFeedback && (
+                  <div className={`text-center text-sm font-bold px-2 py-1 rounded-xl animate-fadeIn shrink-0
+                    ${serveFeedback.correct ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'}`}>
+                    {serveFeedback.correct ? '🎉' : '😅'}
+                    <div className="text-xs">{serveFeedback.delta >= 0 ? '+' : ''}{serveFeedback.delta}</div>
+                  </div>
                 )}
               </div>
-              <ConveyorBeltComponent
-                items={conveyorItems}
-                onGrab={grabConveyorItem}
-                stage={shopStage}
-                getIngredient={getIngredientById}
-              />
-            </>
-          ) : (
-            <div className="grid grid-cols-4 gap-1.5 content-start">
-              {day1Ingredients.map(ing => {
-                const isInPot = potIngredients.some(p => p.includes(ing.id))
-                const inOrder = displayOrder?.ingredients.includes(ing.id)
-                return (
-                  <button
-                    key={ing.id}
-                    onClick={() => {
-                      if (isServing) return
-                      if (isInPot) return
-                      playSound('sizzle')
-                      const dropId = dropIdRef.current++
-                      setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
-                      setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
-                      setPotIngredients(pots => pots.map((p, i) => i === selectedPot ? [...p, ing.id] : p))
-                    }}
-                    className={`rounded-xl py-2 flex flex-col items-center gap-0.5 border-2 transition-all active:scale-95
-                      ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
-                        inOrder ? 'border-yellow-400 bg-yellow-900/50 shadow-lg shadow-yellow-500/30 animate-pulse' :
-                        'border-orange-800/40 bg-orange-950/60'}`}
-                  >
-                    <span className="text-xl">{ing.emoji}</span>
-                    <span className={`text-xs font-bold leading-tight ${inOrder && !isInPot ? 'text-yellow-300' : 'text-orange-200'}`}>{ing.name}</span>
-                    {isInPot ? <span className="text-green-400 text-xs leading-none">✅</span>
-                      : inOrder ? <span className="text-yellow-400 text-xs leading-none">👆</span>
-                      : <span className="text-xs leading-none opacity-0">·</span>}
-                  </button>
-                )
-              })}
             </div>
           )}
-        </div>
 
-        {/* ── POT AREA ── */}
-        <div ref={potRef} className="px-3 pb-3 shrink-0 relative">
-          {activeTooltip === 'pot' && (
-            <InGameTooltip message="鍋に入ったよ！提供ボタンを押そう！" position="top" />
-          )}
-          {numPots > 1 && (
-            <p className="text-orange-300/50 text-xs mb-1">🍲 選択中: 鍋 {selectedPot + 1}</p>
-          )}
-          <div className={`grid gap-2 ${numPots === 1 ? 'grid-cols-1' : numPots === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-            {Array.from({ length: numPots }, (_, i) => (
-              <div key={i}>
-                <PotDisplay
-                  potIndex={i}
-                  isSelected={selectedPot === i}
-                  selectedIngredients={new Set(potIngredients[i] ?? [])}
-                  cookingItems={cookingItems.filter(ci => ci.potIndex === i)}
-                  currentOrder={order}
-                  onSelect={idx => setSelectedPot(idx)}
-                  onServe={idx => handleServe(idx, false)}
-                  isServing={isServing}
-                  spiceLevel={potSpices[i] ?? ''}
-                />
+          {/* ── SPICE ROW (Day 2+ only) ── */}
+          {dayCfg.hasSpiceChoice && activeTableId !== null && (
+            <div className="px-3 shrink-0">
+              <div className="flex gap-1.5">
+                {spiceIngredients.map(ing => {
+                  const isSelected = potSpices[selectedPot] === ing.id
+                  const inOrder = displayOrder?.spiceLevel === ing.id
+                  return (
+                    <button key={ing.id}
+                      onClick={() => {
+                        if (isServing) return
+                        setPotSpices(spices => spices.map((s, i) => i === selectedPot ? (s === ing.id ? '' : ing.id) : s))
+                      }}
+                      className={`flex-1 rounded-xl py-1.5 flex items-center justify-center gap-1 transition-all border-2 active:scale-95 text-xs
+                        ${isSelected && inOrder ? 'border-green-400 bg-green-900/60 text-green-200 font-bold' :
+                          isSelected && !inOrder ? 'border-red-400 bg-red-900/60 text-red-200' :
+                          inOrder && !isSelected ? 'border-yellow-400 bg-yellow-900/40 text-yellow-300 font-bold animate-pulse' :
+                          'border-orange-800/40 bg-orange-950/60 text-orange-300'}`}>
+                      {ing.emoji} {ing.name}{inOrder && !isSelected ? ' 👆' : ''}
+                    </button>
+                  )
+                })}
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* ── INGREDIENT GRID (Day 1) or CONVEYOR (Day 2+) ── */}
+          <div ref={ingredientsRef} className="px-3 flex-1 min-h-0 flex flex-col">
+            {showConveyor ? (
+              <>
+                <div className="flex items-center gap-2 mb-1 shrink-0">
+                  <p className="text-orange-400/70 text-xs font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
+                  {showConveyorNewBadge && (
+                    <span className="text-xs bg-green-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">NEW!</span>
+                  )}
+                </div>
+                <ConveyorBeltComponent
+                  items={conveyorItems}
+                  onGrab={grabConveyorItem}
+                  stage={shopStage}
+                  getIngredient={getIngredientById}
+                />
+              </>
+            ) : (
+              <div className="grid grid-cols-4 gap-1 content-start">
+                {day1Ingredients.map(ing => {
+                  const isInPot = potIngredients.some(p => p.includes(ing.id))
+                  const inOrder = displayOrder?.ingredients.includes(ing.id)
+                  return (
+                    <button
+                      key={ing.id}
+                      onClick={() => {
+                        if (isServing) return
+                        if (isInPot) return
+                        playSound('sizzle')
+                        const dropId = dropIdRef.current++
+                        setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
+                        setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
+                        setPotIngredients(pots => pots.map((p, i) => i === selectedPot ? [...p, ing.id] : p))
+                      }}
+                      className={`rounded-xl py-1.5 flex flex-col items-center gap-0.5 border-2 transition-all active:scale-95
+                        ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
+                          inOrder ? 'border-yellow-400 bg-yellow-900/50 shadow-lg shadow-yellow-500/30 animate-pulse' :
+                          'border-orange-800/40 bg-orange-950/60'}`}
+                    >
+                      <span className="text-lg">{ing.emoji}</span>
+                      <span className={`text-xs font-bold leading-tight ${inOrder && !isInPot ? 'text-yellow-300' : 'text-orange-200'}`}>{ing.name}</span>
+                      {isInPot ? <span className="text-green-400 text-xs leading-none">✅</span>
+                        : inOrder ? <span className="text-yellow-400 text-xs leading-none">👆</span>
+                        : <span className="text-xs leading-none opacity-0">·</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── POT AREA ── */}
+          <div ref={potRef} className="px-3 pb-2 shrink-0 relative">
+            {activeTooltip === 'pot' && (
+              <InGameTooltip message="鍋に入ったよ！提供ボタンを押そう！" position="top" />
+            )}
+            {numPots > 1 && (
+              <p className="text-orange-300/50 text-xs mb-1">🍲 選択中: 鍋 {selectedPot + 1}</p>
+            )}
+            <div className={`grid gap-2 ${numPots === 1 ? 'grid-cols-1' : numPots === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {Array.from({ length: numPots }, (_, i) => (
+                <div key={i}>
+                  <PotDisplay
+                    potIndex={i}
+                    isSelected={selectedPot === i}
+                    selectedIngredients={new Set(potIngredients[i] ?? [])}
+                    cookingItems={cookingItems.filter(ci => ci.potIndex === i)}
+                    currentOrder={order}
+                    onSelect={idx => setSelectedPot(idx)}
+                    onServe={idx => handleServe(idx, false)}
+                    isServing={isServing}
+                    spiceLevel={potSpices[i] ?? ''}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

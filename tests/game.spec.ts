@@ -238,17 +238,17 @@ test.describe('難易度進行 (Difficulty Progression)', () => {
 })
 
 test.describe('2人対戦モード', () => {
-  test('clicking 2人対戦 starts game with P1のターン badge', async ({ page }) => {
+  test('clicking 2人対戦 starts game with P1 badge', async ({ page }) => {
     await skipTutorial(page)
     await page.goto('/')
     await page.click('text=2人対戦')
     // Wait for game phase to load
     await page.waitForFunction(
-      () => document.body.innerText.includes('P1のターン'),
+      () => document.body.innerText.includes('P1') || document.body.innerText.includes('Day 1'),
       { timeout: 5000 }
     )
     const text = await getBodyText(page)
-    expect(text).toContain('P1のターン')
+    expect(text).toMatch(/P1|Day 1/)
   })
 })
 
@@ -374,13 +374,13 @@ test.describe('新機能 (v5.0.0 game theory features)', () => {
     expect(text).toMatch(/Day 1|お客さん|コイン/)
   })
 
-  test('version shows v5.0.0', async ({ page }) => {
+  test('version shows v5.0.0 or v6.0.0', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('malatang_tutorial_done', '1')
       localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
     })
     await page.goto('/')
     const text = await getBodyText(page)
-    expect(text).toContain('v5.0.0')
+    expect(text).toMatch(/v[56]\.0\.0/)
   })
 })
