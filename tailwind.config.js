@@ -31,6 +31,29 @@ module.exports = {
           '0%': { opacity: '0.6', transform: 'translateY(0) scaleX(1)' },
           '100%': { opacity: '0', transform: 'translateY(-30px) scaleX(1.5)' },
         },
+        conveyorMove: {
+          '0%': { transform: 'translateX(110%)' },
+          '100%': { transform: 'translateX(-120%)' },
+        },
+        dropIn: {
+          '0%': { transform: 'translateY(-40px) scale(1.5)', opacity: '1' },
+          '60%': { transform: 'translateY(8px) scale(0.9)', opacity: '1' },
+          '80%': { transform: 'translateY(-4px) scale(1.05)', opacity: '1' },
+          '100%': { transform: 'translateY(0) scale(1)', opacity: '0' },
+        },
+        angerFill: {
+          '0%': { width: '0%' },
+          '100%': { width: '100%' },
+        },
+        customerReact: {
+          '0%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.4)' },
+          '100%': { transform: 'scale(1)' },
+        },
+        slideUp: {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         bubble: 'bubble 2s ease-in-out infinite',
@@ -38,6 +61,10 @@ module.exports = {
         shake: 'shake 0.4s ease-in-out',
         fadeIn: 'fadeIn 0.3s ease-out',
         steam: 'steam 1.5s ease-out infinite',
+        conveyorMove: 'conveyorMove linear forwards',
+        dropIn: 'dropIn 0.6s ease-out forwards',
+        customerReact: 'customerReact 0.5s ease-in-out',
+        slideUp: 'slideUp 0.4s ease-out',
       },
     },
   },
