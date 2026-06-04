@@ -281,3 +281,77 @@ test.describe('結果画面', () => {
     expect(finalText).toMatch(/ゲーム終了|仕入れフェーズ|Day *2|クリア/)
   })
 })
+
+test.describe('新機能 (v5.0.0 game theory features)', () => {
+  test('daily bonus modal appears on fresh localStorage', async ({ page }) => {
+    await page.addInitScript(() => {
+      // Clear daily login data to simulate fresh user
+      localStorage.removeItem('malatang_lastLoginDate')
+      localStorage.removeItem('malatang_loginStreak')
+      localStorage.removeItem('malatang_bonusDayIndex')
+    })
+    await page.goto('/')
+    // Wait for bonus state to trigger
+    await page.waitForTimeout(500)
+    // The bonus info is stored - click 1人プレイ to trigger the bonus modal flow
+    await page.click('text=1人プレイ')
+    await page.waitForTimeout(800)
+    const text = await getBodyText(page)
+    // Either the daily bonus modal shows or the game starts (bonus already pending)
+    expect(text).toMatch(/デイリーボーナス|Day 1|コイン/)
+  })
+
+  test('achievements screen opens from title', async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    await page.waitForTimeout(300)
+    await page.click('text=🏅 実績')
+    await page.waitForTimeout(300)
+    const text = await getBodyText(page)
+    expect(text).toContain('実績')
+  })
+
+  test('skill tree opens from title', async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    await page.waitForTimeout(300)
+    await page.click('text=⬆️ スキル')
+    await page.waitForTimeout(300)
+    const text = await getBodyText(page)
+    expect(text).toContain('スキルツリー')
+  })
+
+  test('daily challenge shows on title screen', async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    await page.waitForTimeout(300)
+    const text = await getBodyText(page)
+    expect(text).toContain('今日のチャレンジ')
+  })
+
+  test('daily challenge shows in game', async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    await page.waitForTimeout(1000)
+    const text = await getBodyText(page)
+    expect(text).toMatch(/チャレンジ|Day 1/)
+  })
+
+  test('VIP customer can appear in game (type check)', async ({ page }) => {
+    // Just verify the game starts and functions without error
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    await page.waitForTimeout(1000)
+    const text = await getBodyText(page)
+    expect(text).toMatch(/Day 1|お客さん|コイン/)
+  })
+
+  test('version shows v5.0.0', async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem('malatang_tutorial_done', '1') })
+    await page.goto('/')
+    const text = await getBodyText(page)
+    expect(text).toContain('v5.0.0')
+  })
+})

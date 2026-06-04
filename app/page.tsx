@@ -2610,7 +2610,8 @@ export default function MalatangGame() {
   const handleSkillUpgrade = useCallback((branch: keyof SkillTree) => {
     const currentLevel = skillTree[branch]
     if (currentLevel >= 3) return
-    const cost = SKILL_COSTS[currentLevel]
+    if (currentLevel < 0 || currentLevel > 2) return
+    const cost: number = SKILL_COSTS[currentLevel as 0 | 1 | 2]
     if (totalCoins < cost) return
     const newTree = { ...skillTree, [branch]: (currentLevel + 1) as 0 | 1 | 2 | 3 }
     setSkillTree(newTree)
@@ -3203,7 +3204,11 @@ export default function MalatangGame() {
 
         {/* Active customer order panel */}
         {displayOrder && (
-          <div className="bg-orange-950/60 border border-orange-700/40 rounded-2xl p-3 animate-fadeIn">
+          <div className={`rounded-2xl p-3 animate-fadeIn border ${
+            displayOrder.customerType === 'vip' ? 'bg-yellow-950/60 border-yellow-500/60' :
+            displayOrder.customerType === 'boss' ? 'bg-red-950/60 border-red-600/60' :
+            'bg-orange-950/60 border-orange-700/40'
+          }`}>
             <div className="flex items-center gap-3">
               <div className="flex flex-col items-center">
                 <Character
