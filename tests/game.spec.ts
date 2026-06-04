@@ -67,29 +67,29 @@ test.describe('ランキング画面', () => {
 })
 
 test.describe('チュートリアル', () => {
-  test('shows on first play (localStorage cleared)', async ({ page }) => {
-    // Do NOT set tutorial done — fresh first-time user
+  test('first play goes straight to Day 1 (staged onboarding replaces old tutorial)', async ({ page }) => {
+    // Old tutorial overlay replaced by staged Day 1 experience
     await page.goto('/')
     await page.click('text=1人プレイ')
     const text = await getBodyText(page)
-    expect(text).toContain('スキップ')
-  })
-
-  test('スキップ button works', async ({ page }) => {
-    await page.goto('/')
-    await page.click('text=1人プレイ')
-    await page.click('text=スキップ')
-    // After skipping, should be in normal gameplay (no tutorial overlay)
-    const text = await getBodyText(page)
+    // Should show Day 1 game immediately — no スキップ overlay
+    expect(text).toContain('Day 1')
     expect(text).not.toContain('スキップ')
   })
 
-  test('does NOT show on second play (localStorage set)', async ({ page }) => {
+  test('Day 1 shows contextual help (食材を選ぼう)', async ({ page }) => {
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    const text = await getBodyText(page)
+    expect(text).toContain('食材を選ぼう')
+  })
+
+  test('second play also starts from Day 1', async ({ page }) => {
     await skipTutorial(page)
     await page.goto('/')
     await page.click('text=1人プレイ')
     const text = await getBodyText(page)
-    expect(text).not.toContain('スキップ')
+    expect(text).toContain('Day 1')
   })
 })
 
@@ -111,34 +111,36 @@ test.describe('ゲームプレイ', () => {
     expect(text).toContain('お客さん')
   })
 
-  test('shows ライバル score', async ({ page }) => {
+  test('shows Day 1 header', async ({ page }) => {
     const text = await getBodyText(page)
-    expect(text).toContain('ライバル')
+    expect(text).toContain('Day 1')
   })
 
-  test('shows 満足度 meter', async ({ page }) => {
+  test('Day 1 shows static ingredient grid (not conveyor)', async ({ page }) => {
     const text = await getBodyText(page)
-    expect(text).toContain('満足度')
+    // Day 1 should show static grid label, NOT conveyor belt
+    expect(text).toContain('食材を選ぼう')
+    expect(text).not.toContain('コンベア（食材をクリックして取ろう！）')
   })
 
-  test('shows conveyor ingredients within 3 seconds', async ({ page }) => {
-    // Wait for conveyor items to appear
-    await page.waitForFunction(
-      () => {
-        const text = document.body.innerText
-        return text.includes('コンベア')
-      },
-      { timeout: 5000 }
-    )
+  test('Day 1 does NOT show ライバル score', async ({ page }) => {
     const text = await getBodyText(page)
-    expect(text).toContain('コンベア')
+    // Rival is locked until Day 4
+    expect(text).not.toContain('ライバル')
   })
 
-  test('shows spice options (普通/辛め/激辛)', async ({ page }) => {
+  test('Day 1 does NOT show 満足度 meter', async ({ page }) => {
+    const text = await getBodyText(page)
+    // Anger meter gated — no satisfaction bar on Day 1
+    expect(text).not.toContain('満足度')
+  })
+
+  test('Day 1 only shows 普通 spice (no 辛め/激辛)', async ({ page }) => {
     const text = await getBodyText(page)
     expect(text).toContain('普通')
-    expect(text).toContain('辛め')
-    expect(text).toContain('激辛')
+    // Day 1 should NOT show advanced spice options
+    expect(text).not.toContain('辛め')
+    expect(text).not.toContain('激辛')
   })
 
   test('提供 button works and triggers serve logic', async ({ page }) => {
@@ -151,7 +153,7 @@ test.describe('ゲームプレイ', () => {
     // Just confirm the button was clickable and page is still functional
     await page.waitForTimeout(500)
     const text = await getBodyText(page)
-    expect(text).toMatch(/コイン|満足度|お客さん/)
+    expect(text).toMatch(/コイン|Day|お客さん/)
   })
 
   test('📖 recipe book opens and shows recipe entries (❓ or actual names)', async ({ page }) => {
@@ -161,6 +163,66 @@ test.describe('ゲームプレイ', () => {
     expect(text).toContain('秘密のレシピ本')
     // Should show either undiscovered (❓) or discovered recipe names
     expect(text).toMatch(/❓|海鮮スペシャル|モンゴル風|おでん風|ベジスペシャル|海老うどん/)
+  })
+})
+
+test.describe('難易度進行 (Difficulty Progression)', () => {
+  test('Day 1 — no conveyor shown', async ({ page }) => {
+    await skipTutorial(page)
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    const text = await getBodyText(page)
+    // Day 1 uses static grid, not conveyor
+    expect(text).not.toContain('コンベア（食材をクリックして取ろう！）')
+    expect(text).toContain('食材を選ぼう')
+  })
+
+  test('Day 1 — only 普通 spice available', async ({ page }) => {
+    await skipTutorial(page)
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    const text = await getBodyText(page)
+    expect(text).toContain('普通')
+    expect(text).not.toContain('辛め')
+  })
+
+  test('Day 1 — no rival displayed', async ({ page }) => {
+    await skipTutorial(page)
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+    const text = await getBodyText(page)
+    expect(text).not.toContain('ライバル')
+  })
+
+  test('Day clear modal appears after Day 1 completes', async ({ page }) => {
+    test.setTimeout(120000)
+    await skipTutorial(page)
+    await page.goto('/')
+    await page.click('text=1人プレイ')
+
+    const startTime = Date.now()
+    const deadline = 110000
+
+    // Rapidly serve customers to finish Day 1
+    while (Date.now() - startTime < deadline) {
+      const bodyText = await getBodyText(page)
+      if (bodyText.includes('Day 1 クリア')) break
+      if (bodyText.includes('ゲーム終了')) break
+
+      const serveBtns = page.locator('button:has-text("🍲 提供")')
+      const count = await serveBtns.count()
+      if (count > 0) {
+        try {
+          await serveBtns.first().click({ timeout: 1000 })
+        } catch {
+          // ignore
+        }
+      }
+      await page.waitForTimeout(1500)
+    }
+
+    const finalText = await getBodyText(page)
+    expect(finalText).toMatch(/Day 1 クリア|ゲーム終了/)
   })
 })
 
@@ -216,6 +278,6 @@ test.describe('結果画面', () => {
     }
 
     const finalText = await getBodyText(page)
-    expect(finalText).toMatch(/ゲーム終了|仕入れフェーズ|Day *2/)
+    expect(finalText).toMatch(/ゲーム終了|仕入れフェーズ|Day *2|クリア/)
   })
 })

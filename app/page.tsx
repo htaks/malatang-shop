@@ -12,8 +12,67 @@ import { useBGM } from './hooks/useBGM'
 
 type Category = 'vegetable' | 'protein' | 'noodle' | 'spice'
 type CustomerType = 'normal' | 'impatient' | 'allergic' | 'regular' | 'hungry'
-type GamePhase = 'title' | 'playing' | 'procurement' | 'result' | 'leaderboard' | 'p2playing' | 'p2result'
+type GamePhase = 'title' | 'playing' | 'procurement' | 'result' | 'leaderboard' | 'p2playing' | 'p2result' | 'dayclear'
 type ShopStage = 1 | 2 | 3 | 4
+
+// ─── Day Config ───────────────────────────────────────────────────────────────
+
+interface DayConfig {
+  maxIngredients: number
+  timerSeconds: number
+  hasConveyor: boolean
+  hasSpecialCustomers: boolean
+  hasAngerMeter: boolean
+  hasRival: boolean
+  numPots: number
+  hasSpiceChoice: boolean
+  hasProcurement: boolean
+}
+
+function getDayConfig(dayIndex: number): DayConfig {
+  if (dayIndex <= 1) return {
+    maxIngredients: 2, timerSeconds: 45, hasConveyor: false,
+    hasSpecialCustomers: false, hasAngerMeter: false, hasRival: false,
+    numPots: 1, hasSpiceChoice: false, hasProcurement: false,
+  }
+  if (dayIndex === 2) return {
+    maxIngredients: 3, timerSeconds: 35, hasConveyor: true,
+    hasSpecialCustomers: false, hasAngerMeter: false, hasRival: false,
+    numPots: 1, hasSpiceChoice: true, hasProcurement: false,
+  }
+  if (dayIndex === 3) return {
+    maxIngredients: 4, timerSeconds: 30, hasConveyor: true,
+    hasSpecialCustomers: true, hasAngerMeter: true, hasRival: false,
+    numPots: 1, hasSpiceChoice: true, hasProcurement: false,
+  }
+  if (dayIndex === 4) return {
+    maxIngredients: 4, timerSeconds: 25, hasConveyor: true,
+    hasSpecialCustomers: true, hasAngerMeter: true, hasRival: true,
+    numPots: 2, hasSpiceChoice: true, hasProcurement: false,
+  }
+  // Day 5+
+  return {
+    maxIngredients: dayIndex >= 6 ? 5 : 4, timerSeconds: 20, hasConveyor: true,
+    hasSpecialCustomers: true, hasAngerMeter: true, hasRival: true,
+    numPots: dayIndex >= 7 ? 3 : 2, hasSpiceChoice: true, hasProcurement: true,
+  }
+}
+
+interface DayClearUnlock {
+  icon: string
+  title: string
+  description: string
+}
+
+function getDayClearUnlock(dayIndex: number): DayClearUnlock | null {
+  switch (dayIndex) {
+    case 1: return { icon: '🏭', title: 'コンベアベルト', description: '食材が自動で流れてきます！\nタイミングよくクリックしよう' }
+    case 2: return { icon: '👤', title: '特別なお客さん', description: 'せっかちなお客さんや常連さんが\n来るようになります！' }
+    case 3: return { icon: '🍲', title: '2つの鍋', description: '鍋が2つに増えます！\n同時に複数の料理を作ろう' }
+    case 4: return { icon: '🏪', title: '仕入れフェーズ', description: '毎日の営業前に食材を仕入れよう！\n戦略的に選ぼう' }
+    default: return null
+  }
+}
 
 interface Ingredient {
   id: string
@@ -319,9 +378,13 @@ function getUnlockedIngredients(stage: ShopStage): Ingredient[] {
   return NON_SPICE.filter(i => !i.unlockStage || i.unlockStage <= stage)
 }
 
-function generateOrder(level: number, prevOrder: CustomerOrder | null, customerIndex: number, stage: ShopStage): CustomerOrder {
-  const type = pickCustomerType(customerIndex)
+function generateOrder(level: number, prevOrder: CustomerOrder | null, customerIndex: number, stage: ShopStage, dayConfig?: DayConfig): CustomerOrder {
+  const cfg = dayConfig
+  const allowSpecial = cfg ? cfg.hasSpecialCustomers : true
+  const type = allowSpecial ? pickCustomerType(customerIndex) : 'normal'
   const unlockedIds = getUnlockedIngredients(stage).map(i => i.id)
+
+  const configMax = cfg ? cfg.maxIngredients : undefined
 
   let minIngredients: number
   let maxIngredients: number
@@ -333,17 +396,28 @@ function generateOrder(level: number, prevOrder: CustomerOrder | null, customerI
     maxIngredients = level >= 3 ? 5 : level === 2 ? 4 : 3
   }
 
+  if (configMax !== undefined) {
+    minIngredients = Math.min(minIngredients, configMax)
+    maxIngredients = Math.min(maxIngredients, configMax)
+  }
+
   const count = minIngredients + Math.floor(Math.random() * (maxIngredients - minIngredients + 1))
   const customer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)]
   let ingredients: string[]
   let spiceLevel: string
+
+  const hasSpiceChoice = cfg ? cfg.hasSpiceChoice : true
 
   if (type === 'regular' && prevOrder) {
     ingredients = [...prevOrder.ingredients]
     spiceLevel = prevOrder.spiceLevel
   } else {
     ingredients = shuffle(unlockedIds).slice(0, count)
-    spiceLevel = SPICE_IDS[Math.floor(Math.random() * SPICE_IDS.length)]
+    if (hasSpiceChoice) {
+      spiceLevel = SPICE_IDS[Math.floor(Math.random() * SPICE_IDS.length)]
+    } else {
+      spiceLevel = 'spice1' // always 普通 on Day 1
+    }
   }
 
   let forbiddenIngredients: string[] = []
@@ -355,9 +429,10 @@ function generateOrder(level: number, prevOrder: CustomerOrder | null, customerI
   return { ingredients, spiceLevel, customerEmoji: customer.emoji, customerName: customer.name, customerType: type, forbiddenIngredients }
 }
 
-function getTimerForLevel(level: number, type: CustomerType): number {
-  const base = level >= 3 ? 20 : level === 2 ? 25 : 30
-  return type === 'impatient' ? Math.floor(base / 2) : base
+function getTimerForLevel(level: number, type: CustomerType, dayConfig?: DayConfig): number {
+  const base = dayConfig ? dayConfig.timerSeconds : (level >= 3 ? 20 : level === 2 ? 25 : 30)
+  const hasAnger = dayConfig ? dayConfig.hasAngerMeter : true
+  return (hasAnger && type === 'impatient') ? Math.floor(base / 2) : base
 }
 
 function getAngerDuration(type: CustomerType, stage: ShopStage): number {
@@ -977,12 +1052,144 @@ function PotDisplay({ potIndex, isSelected, selectedIngredients, cookingItems, c
   )
 }
 
+// Day Clear Modal
+interface DayClearModalProps {
+  dayIndex: number
+  score: number
+  onNext: () => void
+}
+
+function getDayStars(score: number, dayIndex: number): number {
+  const thresholds = [dayIndex * 50, dayIndex * 120, dayIndex * 220]
+  if (score >= thresholds[2]) return 3
+  if (score >= thresholds[1]) return 2
+  return 1
+}
+
+function DayClearModal({ dayIndex, score, onNext }: DayClearModalProps) {
+  const stars = getDayStars(score, dayIndex)
+  const unlock = getDayClearUnlock(dayIndex)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75">
+      <motion.div
+        className="bg-gradient-to-b from-orange-900 to-orange-950 border-2 border-orange-500 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center"
+        initial={{ scale: 0.6, opacity: 0, y: 40 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+      >
+        <motion.div
+          className="text-5xl mb-3"
+          animate={{ rotate: [0, -10, 10, -5, 5, 0], scale: [1, 1.3, 1] }}
+          transition={{ delay: 0.2, duration: 0.7 }}
+        >
+          🎉
+        </motion.div>
+        <h2 className="text-3xl font-black text-orange-300 mb-1">Day {dayIndex} クリア！</h2>
+        <div className="flex justify-center gap-1 text-3xl my-4">
+          {[1, 2, 3].map(s => (
+            <motion.span
+              key={s}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.3 + s * 0.15, type: 'spring', stiffness: 400 }}
+            >
+              {s <= stars ? '🌟' : '⭐'}
+            </motion.span>
+          ))}
+        </div>
+        <p className="text-yellow-400 font-bold text-lg mb-4">スコア: {score.toLocaleString()} コイン</p>
+
+        {unlock && (
+          <motion.div
+            className="bg-orange-950/80 border border-orange-600/60 rounded-2xl p-4 mb-5 text-left"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+          >
+            <p className="text-orange-400/70 text-xs font-bold mb-2">✨ NEW UNLOCK</p>
+            <div className="flex items-start gap-3">
+              <span className="text-3xl">{unlock.icon}</span>
+              <div>
+                <p className="text-orange-200 font-bold text-sm">{unlock.title}</p>
+                <p className="text-orange-300/70 text-xs mt-0.5 whitespace-pre-line">{unlock.description}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <motion.button
+          onClick={onNext}
+          className="w-full bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white font-black text-lg py-3 rounded-2xl transition-all active:scale-95"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.9 }}
+        >
+          次のDayへ！ →
+        </motion.button>
+      </motion.div>
+    </div>
+  )
+}
+
+// In-game contextual tooltip
+interface InGameTooltipProps {
+  message: string
+  position?: 'top' | 'bottom'
+}
+
+function InGameTooltip({ message, position = 'bottom' }: InGameTooltipProps) {
+  return (
+    <motion.div
+      className={`absolute ${position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 z-30 pointer-events-none`}
+      initial={{ opacity: 0, y: position === 'top' ? 8 : -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="bg-orange-500 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-lg whitespace-nowrap">
+        {message}
+        <motion.span
+          className="ml-1 inline-block"
+          animate={{ x: [0, 4, 0] }}
+          transition={{ repeat: Infinity, duration: 0.8 }}
+        >←</motion.span>
+      </div>
+    </motion.div>
+  )
+}
+
+// Day Start Banner
+function DayStartBanner({ dayIndex }: { dayIndex: number }) {
+  return (
+    <motion.div
+      className="fixed top-0 left-0 right-0 z-40 flex justify-center pointer-events-none"
+      initial={{ y: -80, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -80, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <div className="bg-gradient-to-r from-red-700 to-orange-600 text-white font-black text-2xl px-10 py-3 rounded-b-2xl shadow-2xl">
+        📅 Day {dayIndex} スタート！
+      </div>
+    </motion.div>
+  )
+}
+
 // ─── Main Game Component ──────────────────────────────────────────────────────
 
 export default function MalatangGame() {
   const [phase, setPhase] = useState<GamePhase>('title')
   const [tutorialStep, setTutorialStep] = useState(0)
   const [isTutorialActive, setIsTutorialActive] = useState(false)
+
+  // Staged difficulty
+  const [shownDayBanner, setShownDayBanner] = useState(false)
+  const [showDayBanner, setShowDayBanner] = useState(false)
+  const [shownTooltips, setShownTooltips] = useState<Set<string>>(new Set())
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
+  const [conveyorNewBadgeUntil, setConveyorNewBadgeUntil] = useState<number>(0)
+  const [pendingDayClear, setPendingDayClear] = useState<number | null>(null) // dayIndex that just cleared
 
   // Scores
   const [score, setScore] = useState(0)
@@ -1080,6 +1287,8 @@ export default function MalatangGame() {
 
   useEffect(() => {
     if (phase !== 'playing' && phase !== 'p2playing') return
+    const angerEnabled = getDayConfig(dayIndex).hasAngerMeter
+    if (!angerEnabled) return // customers wait patiently on early days
     const n = Date.now()
     setCustomerQueue(prev => prev.map(qc => {
       if (qc.left) return qc
@@ -1100,11 +1309,12 @@ export default function MalatangGame() {
       if (rivalRef.current) { clearInterval(rivalRef.current); rivalRef.current = null }
       return
     }
+    if (!getDayConfig(dayIndex).hasRival) return
     rivalRef.current = setInterval(() => {
       setRivalScore(prev => prev + Math.floor(Math.random() * 15) + 5)
     }, 4000)
     return () => { if (rivalRef.current) clearInterval(rivalRef.current) }
-  }, [phase])
+  }, [phase, dayIndex])
 
   // ── Cooking timer ─────────────────────────────────────────────────────────────
 
@@ -1158,6 +1368,10 @@ export default function MalatangGame() {
       if (conveyorSpawnRef.current) clearInterval(conveyorSpawnRef.current)
       return
     }
+    if (!getDayConfig(dayIndex).hasConveyor) {
+      if (conveyorSpawnRef.current) clearInterval(conveyorSpawnRef.current)
+      return
+    }
     const spawnInterval = shopStage >= 3 ? 1400 : shopStage >= 2 ? 1800 : 2200
     const beltDuration = shopStage >= 3 ? 4 : shopStage >= 2 ? 5 : 6
 
@@ -1177,7 +1391,7 @@ export default function MalatangGame() {
     }, spawnInterval)
 
     return () => { if (conveyorSpawnRef.current) clearInterval(conveyorSpawnRef.current) }
-  }, [phase, shopStage])
+  }, [phase, shopStage, dayIndex])
 
   // Purge expired conveyor items
   useEffect(() => {
@@ -1234,16 +1448,17 @@ export default function MalatangGame() {
 
   // ── Queue management ──────────────────────────────────────────────────────────
 
-  const spawnCustomersForQueue = useCallback((lv: number, stage: ShopStage, prevOrd: CustomerOrder | null, currentStock: Stock, startIdx: number) => {
+  const spawnCustomersForQueue = useCallback((lv: number, stage: ShopStage, prevOrd: CustomerOrder | null, currentStock: Stock, startIdx: number, dayConfig?: DayConfig) => {
     const numToSpawn = Math.min(3 + Math.floor(Math.random() * 2), CUSTOMERS_PER_DAY)
     const newQueue: QueuedCustomer[] = []
     let prev = prevOrd
     for (let i = 0; i < numToSpawn; i++) {
-      const order = generateOrder(lv, prev, startIdx + i, stage)
+      const order = generateOrder(lv, prev, startIdx + i, stage, dayConfig)
       // Filter to available stock
       const availableIds = NON_SPICE_IDS.filter(id => (currentStock[id] ?? 0) > 0)
       const filtered = order.ingredients.filter(id => availableIds.includes(id))
-      const finalIngredients = filtered.length >= 1 ? filtered : shuffle(availableIds).slice(0, Math.max(1, Math.min(2, availableIds.length)))
+      const maxIng = dayConfig ? dayConfig.maxIngredients : 5
+      const finalIngredients = filtered.length >= 1 ? filtered.slice(0, maxIng) : shuffle(availableIds).slice(0, Math.max(1, Math.min(2, Math.min(maxIng, availableIds.length))))
       const finalOrder = { ...order, ingredients: finalIngredients }
       const id = queueIdRef.current++
       newQueue.push({
@@ -1263,22 +1478,26 @@ export default function MalatangGame() {
 
   // p2: true = starting P2's turn (phase='p2playing'), false = starting P1's turn or solo
   // isP2ModeVal: whether the overall session is 2-player (preserved across P1→P2 transition)
-  const beginPlaying = useCallback((resetAll = true, currentStock?: Stock, p2 = false, isP2ModeVal?: boolean) => {
+  const beginPlaying = useCallback((resetAll = true, currentStock?: Stock, p2 = false, isP2ModeVal?: boolean, startDayIndex?: number) => {
     const lv = 1
     const stage: ShopStage = 1
     const stockToUse = currentStock ?? buildInitialStock()
+    const startDay = startDayIndex ?? 1
+    const dayCfg = getDayConfig(startDay)
 
     if (resetAll) {
       setScore(0)
       setLevel(lv)
       setShopStage(stage)
-      setNumPots(1)
+      setNumPots(dayCfg.numPots)
       setCustomerIndex(0)
-      setDayIndex(1)
+      setDayIndex(startDay)
       setCombo(0)
       setSatisfaction(100)
       setStock(stockToUse)
       setProcurementBudget(500)
+      setShownTooltips(new Set())
+      setActiveTooltip(null)
       // Only reset rival & isP2Mode for a fresh solo game
       if (isP2ModeVal === undefined && !p2) {
         setRivalScore(0)
@@ -1288,41 +1507,37 @@ export default function MalatangGame() {
       }
     }
 
-    const queue = spawnCustomersForQueue(lv, stage, null, stockToUse, 0)
+    const queue = spawnCustomersForQueue(lv, stage, null, stockToUse, 0, dayCfg)
     setCustomerQueue(queue)
     setActiveCustomerId(queue[0]?.id ?? null)
     setPrevOrder(null)
-    setPotIngredients(Array.from({ length: 1 }, () => []))
-    setPotSpices([''])
+    setPotIngredients(Array.from({ length: dayCfg.numPots }, () => []))
+    setPotSpices(Array.from({ length: dayCfg.numPots }, () => ''))
     setSelectedPot(0)
     setServeFeedback(null)
     setIsServing(false)
     setCookingItems([])
     setConveyorItems([])
 
+    // Show day start banner
+    setShowDayBanner(true)
+    setTimeout(() => setShowDayBanner(false), 2500)
+
+    // Show "NEW! コンベア" badge when conveyor first appears
+    if (dayCfg.hasConveyor) {
+      setConveyorNewBadgeUntil(Date.now() + 30000)
+    }
+
     const firstOrder = queue[0]?.order ?? null
-    const t = firstOrder ? getTimerForLevel(lv, firstOrder.customerType) : 30
+    const t = firstOrder ? getTimerForLevel(lv, firstOrder.customerType, dayCfg) : dayCfg.timerSeconds
     startTimer(t)
     setPhase(p2 ? 'p2playing' : 'playing')
   }, [startTimer, spawnCustomersForQueue])
 
   const startGame = useCallback((p2 = false) => {
-    const seen = typeof window !== 'undefined' && localStorage.getItem('malatang_tutorial_done')
-    if (!seen && !p2) {
-      const order = generateOrder(1, null, 0, 1)
-      setCurrentOrderForTutorial(order)
-      setScore(0); setLevel(1); setShopStage(1); setNumPots(1); setCustomerIndex(0)
-      setDayIndex(1); setCombo(0); setSatisfaction(100)
-      setPotIngredients([[]]); setPotSpices(['']); setSelectedPot(0)
-      setServeFeedback(null); setIsServing(false); setCookingItems([])
-      setConveyorItems([])
-      setTutorialStep(0); setIsTutorialActive(true)
-      setTimeLeft(30); setMaxTime(30)
-      setPhase('playing')
-    } else {
-      // For 2P mode: start P1's turn (p2=false) but mark session as 2P (isP2ModeVal=p2)
-      beginPlaying(true, undefined, false, p2 ? true : undefined)
-    }
+    // Always start from Day 1 — the staged system IS the onboarding
+    // For 2P mode: start P1's turn (p2=false) but mark session as 2P (isP2ModeVal=p2)
+    beginPlaying(true, undefined, false, p2 ? true : undefined, 1)
   }, [beginPlaying])
 
   // Hack: set first queue customer for tutorial
@@ -1366,7 +1581,9 @@ export default function MalatangGame() {
     let delta = 0
     let allCorrect = true
 
-    const spiceCorrect = selectedSpice === order.spiceLevel
+    const serveDayCfg = getDayConfig(dayIndex)
+    // On Day 1 spice is always correct (no choice needed)
+    const spiceCorrect = !serveDayCfg.hasSpiceChoice || selectedSpice === order.spiceLevel
     if (!spiceCorrect) { delta -= 20; allCorrect = false }
 
     const correctItems = Array.from(orderSet).filter(id => selected.has(id))
@@ -1475,9 +1692,10 @@ export default function MalatangGame() {
       setCustomerQueue(prev => {
         const remaining = prev.filter(qc => qc.id !== activeCustomerId)
         const nextActive = remaining.find(qc => !qc.left)
+        const currentDayCfg = getDayConfig(dayIndex)
         if (nextActive) {
           setActiveCustomerId(nextActive.id)
-          const t = getTimerForLevel(level, nextActive.order.customerType)
+          const t = getTimerForLevel(level, nextActive.order.customerType, currentDayCfg)
           startTimer(t)
           setIsServing(false)
         } else {
@@ -1485,11 +1703,14 @@ export default function MalatangGame() {
           const indexInDay = nextCustomerIndex % CUSTOMERS_PER_DAY
           if (indexInDay === 0 && nextCustomerIndex > 0) {
             stopTimer()
+            const completedDay = dayIndex
             const nextDay = Math.floor(nextCustomerIndex / CUSTOMERS_PER_DAY) + 1
             setDayIndex(nextDay)
             setProcurementBudget(Math.max(0, newScore))
-            setPhase('procurement')
             setIsServing(false)
+            // Show day clear screen (not procurement yet — procurement gated by day config)
+            setPendingDayClear(completedDay)
+            setPhase('dayclear')
           } else if (nextCustomerIndex >= CUSTOMERS_PER_DAY * MAX_DAYS) {
             stopTimer()
             setIsServing(false)
@@ -1505,12 +1726,12 @@ export default function MalatangGame() {
             const newLevel = nextCustomerIndex >= 10 ? 3 : nextCustomerIndex >= 5 ? 2 : 1
             const newStage = getStageFromScore(newScore)
             setLevel(newLevel)
-            const newQueue = spawnCustomersForQueue(newLevel, newStage, order, newStock, nextCustomerIndex)
+            const newQueue = spawnCustomersForQueue(newLevel, newStage, order, newStock, nextCustomerIndex, currentDayCfg)
             setCustomerQueue(newQueue)
             const nextCust = newQueue.find(qc => !qc.left)
             if (nextCust) {
               setActiveCustomerId(nextCust.id)
-              const t = getTimerForLevel(newLevel, nextCust.order.customerType)
+              const t = getTimerForLevel(newLevel, nextCust.order.customerType, currentDayCfg)
               startTimer(t)
             }
             setIsServing(false)
@@ -1519,7 +1740,7 @@ export default function MalatangGame() {
         return remaining
       })
     }, 1400)
-  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, isP2Mode, phase, stopTimer, startTimer, spawnCustomersForQueue, beginPlaying])
+  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, dayIndex, isP2Mode, phase, stopTimer, startTimer, spawnCustomersForQueue, beginPlaying])
 
   // Keep ref current so the timer effect always calls the latest version
   useEffect(() => { handleServeRef.current = handleServe }, [handleServe])
@@ -1540,6 +1761,33 @@ export default function MalatangGame() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, phase])
 
+  // ── Contextual one-shot tooltips for Day 1 ────────────────────────────────────
+
+  useEffect(() => {
+    if (dayIndex !== 1) { setActiveTooltip(null); return }
+    if (phase !== 'playing') return
+
+    // Show customer tooltip on first customer
+    if (!shownTooltips.has('customer') && customerIndex === 0 && customerQueue.length > 0) {
+      setActiveTooltip('customer')
+      setShownTooltips(prev => new Set([...Array.from(prev), 'customer']))
+      const t = setTimeout(() => setActiveTooltip(null), 4000)
+      return () => clearTimeout(t)
+    }
+  }, [dayIndex, phase, customerIndex, customerQueue.length, shownTooltips])
+
+  useEffect(() => {
+    if (dayIndex !== 1) return
+    const hasSomethingInPot = potIngredients.some(p => p.length > 0)
+    if (hasSomethingInPot && !shownTooltips.has('pot')) {
+      setActiveTooltip('pot')
+      setShownTooltips(prev => new Set([...Array.from(prev), 'pot']))
+      const t = setTimeout(() => setActiveTooltip(null), 3000)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [potIngredients])
+
   const handleProcurementDone = useCallback((newStock: Stock, spent: number) => {
     const newScore = Math.max(0, score - spent)
     setScore(newScore)
@@ -1547,11 +1795,12 @@ export default function MalatangGame() {
     // Resume game
     const lv = dayIndex >= 3 ? 3 : dayIndex >= 2 ? 2 : 1
     setLevel(lv)
+    const dayCfg = getDayConfig(dayIndex)
     const stage = getStageFromScore(newScore)
     setShopStage(stage)
-    const newPots = STAGE_INFO[stage].pots
+    const newPots = dayCfg.numPots
     setNumPots(newPots)
-    const queue = spawnCustomersForQueue(lv, stage, prevOrder, newStock, customerIndex)
+    const queue = spawnCustomersForQueue(lv, stage, prevOrder, newStock, customerIndex, dayCfg)
     setCustomerQueue(queue)
     const nextCust = queue.find(qc => !qc.left)
     setActiveCustomerId(nextCust?.id ?? null)
@@ -1562,8 +1811,11 @@ export default function MalatangGame() {
     setIsServing(false)
     setCookingItems([])
     setConveyorItems([])
+    // Show day banner
+    setShowDayBanner(true)
+    setTimeout(() => setShowDayBanner(false), 2500)
     if (nextCust) {
-      const t = getTimerForLevel(lv, nextCust.order.customerType)
+      const t = getTimerForLevel(lv, nextCust.order.customerType, dayCfg)
       startTimer(t)
     }
     setPhase(isP2Mode ? 'p2playing' : 'playing')
@@ -1600,6 +1852,49 @@ export default function MalatangGame() {
       potIndex: selectedPot,
     }])
   }, [isServing, isTutorialActive, selectedPot, potIngredients])
+
+  // ── Day Clear handler ─────────────────────────────────────────────────────────
+
+  const handleDayClearNext = useCallback(() => {
+    const completedDay = pendingDayClear ?? dayIndex - 1
+    const nextDay = completedDay + 1
+    const nextDayCfg = getDayConfig(nextDay)
+    setPendingDayClear(null)
+
+    if (nextDayCfg.hasProcurement) {
+      // Go to procurement phase
+      setPhase('procurement')
+    } else {
+      // Start next day directly
+      const lv = nextDay >= 3 ? 3 : nextDay >= 2 ? 2 : 1
+      setLevel(lv)
+      const stage = getStageFromScore(score)
+      setShopStage(stage)
+      const newPots = nextDayCfg.numPots
+      setNumPots(newPots)
+      const queue = spawnCustomersForQueue(lv, stage, prevOrder, stock, customerIndex, nextDayCfg)
+      setCustomerQueue(queue)
+      const nextCust = queue.find(qc => !qc.left)
+      setActiveCustomerId(nextCust?.id ?? null)
+      setPotIngredients(Array.from({ length: newPots }, () => []))
+      setPotSpices(Array.from({ length: newPots }, () => ''))
+      setSelectedPot(0)
+      setServeFeedback(null)
+      setIsServing(false)
+      setCookingItems([])
+      setConveyorItems([])
+      setShowDayBanner(true)
+      setTimeout(() => setShowDayBanner(false), 2500)
+      if (nextDayCfg.hasConveyor) {
+        setConveyorNewBadgeUntil(Date.now() + 30000)
+      }
+      if (nextCust) {
+        const t = getTimerForLevel(lv, nextCust.order.customerType, nextDayCfg)
+        startTimer(t)
+      }
+      setPhase(isP2Mode ? 'p2playing' : 'playing')
+    }
+  }, [pendingDayClear, dayIndex, score, stock, prevOrder, customerIndex, isP2Mode, startTimer, spawnCustomersForQueue])
 
   // ── Leaderboard phase ──────────────────────────────────────────────────────────
 
@@ -1682,7 +1977,7 @@ export default function MalatangGame() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
           >
-            v3.0.0
+            v4.1.0
           </motion.p>
           <motion.p
             className="text-orange-300/70 text-sm mb-8 max-w-sm mx-auto"
@@ -1751,7 +2046,7 @@ export default function MalatangGame() {
             </motion.div>
           )}
 
-          <p className="text-orange-300/40 text-xs mt-4">初回プレイ時はチュートリアルがあります</p>
+          <p className="text-orange-300/40 text-xs mt-4">Day 1から段階的に難しくなります！</p>
         </div>
       </main>
     )
@@ -1909,6 +2204,20 @@ export default function MalatangGame() {
 
   // ── Procurement screen ──────────────────────────────────────────────────────────
 
+  // ── Day Clear screen ───────────────────────────────────────────────────────────
+
+  if (phase === 'dayclear') {
+    const displayDay = pendingDayClear ?? dayIndex - 1
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4 select-none"
+        style={{ background: 'linear-gradient(135deg, #1C0A00, #2D0A0A, #1C0A00)' }}
+      >
+        <ConfettiEffect active={true} />
+        <DayClearModal dayIndex={displayDay} score={score} onNext={handleDayClearNext} />
+      </main>
+    )
+  }
+
   if (phase === 'procurement') {
     return (
       <ProcurementScreen
@@ -1926,16 +2235,23 @@ export default function MalatangGame() {
   const isPlaying = phase === 'playing' || phase === 'p2playing'
   if (!isPlaying) return null
 
+  const dayCfg = getDayConfig(dayIndex)
   const activeCustomer = customerQueue.find(qc => qc.id === activeCustomerId && !qc.left) ?? null
   const order = activeCustomer?.order ?? null
   const timerPct = (timeLeft / maxTime) * 100
   const timerColor = timerPct > 50 ? 'bg-green-500' : timerPct > 25 ? 'bg-yellow-500' : 'bg-red-500'
   const comboMultiplier = Math.min(3, Math.max(1, combo + 1))
   const customerIndexInDay = customerIndex % CUSTOMERS_PER_DAY
+  const showConveyor = dayCfg.hasConveyor
+  const showConveyorNewBadge = showConveyor && Date.now() < conveyorNewBadgeUntil
 
-  const spiceIngredients = INGREDIENTS.filter(i => i.category === 'spice')
+  // For Day 1: static ingredient grid instead of conveyor
+  const day1Ingredients = !showConveyor ? getUnlockedIngredients(shopStage).slice(0, 8) : []
 
-  // For tutorial display compat
+  const spiceIngredients = dayCfg.hasSpiceChoice
+    ? INGREDIENTS.filter(i => i.category === 'spice')
+    : INGREDIENTS.filter(i => i.id === 'spice1') // only 普通 on Day 1
+
   const displayOrder = order
 
   return (
@@ -1950,6 +2266,11 @@ export default function MalatangGame() {
 
       {/* Coin burst */}
       <CoinBurst active={activeCoinBurst} amount={lastCoinAmount} x={50} y={40} />
+
+      {/* Day start banner */}
+      <AnimatePresence>
+        {showDayBanner && <DayStartBanner dayIndex={dayIndex} />}
+      </AnimatePresence>
 
       {/* Drop animations */}
       <AnimatePresence>
@@ -1968,7 +2289,7 @@ export default function MalatangGame() {
       </AnimatePresence>
 
       <motion.main
-        className={`min-h-screen flex flex-col p-3 gap-3 select-none max-w-5xl mx-auto ${isTutorialActive ? 'pointer-events-none' : ''}`}
+        className="min-h-screen flex flex-col p-3 gap-3 select-none max-w-5xl mx-auto"
         animate={screenShake ? { x: [-4, 4, -3, 3, -2, 2, 0] } : { x: 0 }}
         transition={{ duration: 0.4 }}
         style={{ background: 'linear-gradient(160deg, #1C0A00 0%, #2D1200 50%, #1C0A00 100%)' }}
@@ -1977,9 +2298,11 @@ export default function MalatangGame() {
         {/* Top bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-orange-300 text-base font-black">📅 Day {dayIndex}</span>
+            <span className="text-orange-500/40 text-xs">|</span>
             <span className="text-orange-400 text-sm font-bold">{STAGE_INFO[shopStage].name}</span>
             <span className="text-orange-500/40 text-xs">|</span>
-            <span className="text-orange-300/60 text-xs">Day{dayIndex} {customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
+            <span className="text-orange-300/60 text-xs">{customerIndexInDay + 1}/{CUSTOMERS_PER_DAY}</span>
             {isP2Mode && phase === 'playing' && (
               <span className="bg-blue-700/60 text-blue-200 text-xs px-2 py-0.5 rounded-full font-bold">👤 P1のターン</span>
             )}
@@ -1988,7 +2311,9 @@ export default function MalatangGame() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-red-400/70 text-xs">🤖 ライバル: {rivalScore.toLocaleString()}</span>
+            {dayCfg.hasRival && (
+              <span className="text-red-400/70 text-xs">🤖 ライバル: {rivalScore.toLocaleString()}</span>
+            )}
             {combo >= 2 && (
               <span className="text-orange-200 text-xs font-black bg-orange-700/60 px-2 py-0.5 rounded-lg animate-pulse">
                 {combo}連続🔥 ×{comboMultiplier}
@@ -2001,8 +2326,8 @@ export default function MalatangGame() {
           </div>
         </div>
 
-        {/* Satisfaction */}
-        <SatisfactionBar value={satisfaction} />
+        {/* Satisfaction — only shown when anger meter active */}
+        {dayCfg.hasAngerMeter && <SatisfactionBar value={satisfaction} />}
 
         {/* Timer */}
         <div ref={timerRef2} className="w-full bg-orange-950 rounded-full h-3 overflow-hidden border border-orange-900 relative">
@@ -2018,14 +2343,17 @@ export default function MalatangGame() {
           ⏰ {timeLeft}秒
         </div>
 
-        {/* Customer Queue */}
-        <div ref={customerRef}>
-          <p className="text-orange-400/70 text-xs mb-1 font-bold">👥 お客さんキュー</p>
+        {/* Customer Queue — anger bar only shown when hasAngerMeter */}
+        <div ref={customerRef} className="relative">
+          {activeTooltip === 'customer' && (
+            <InGameTooltip message="← ここを見て！注文を確認しよう" position="bottom" />
+          )}
+          <p className="text-orange-400/70 text-xs mb-1 font-bold">👥 お客さん</p>
           <CustomerQueue
             queue={customerQueue}
             activeCustomerId={activeCustomerId}
-            now={now}
-            onSelectCustomer={() => {}} // only first customer served
+            now={dayCfg.hasAngerMeter ? now : 0}
+            onSelectCustomer={() => {}}
           />
         </div>
 
@@ -2044,7 +2372,7 @@ export default function MalatangGame() {
                   size={56}
                 />
                 <span className="text-orange-300/70 text-xs">{displayOrder.customerName}</span>
-                {(() => {
+                {dayCfg.hasSpecialCustomers && (() => {
                   const badge = customerTypeBadge(displayOrder.customerType)
                   return badge ? <span className={`mt-0.5 text-xs px-1.5 py-0.5 rounded-full font-bold ${badge.color}`}>{badge.label}</span> : null
                 })()}
@@ -2075,7 +2403,7 @@ export default function MalatangGame() {
                       </span>
                     )
                   })()}
-                  {displayOrder.customerType === 'allergic' && displayOrder.forbiddenIngredients.length > 0 && displayOrder.forbiddenIngredients.map(id => {
+                  {dayCfg.hasSpecialCustomers && displayOrder.customerType === 'allergic' && displayOrder.forbiddenIngredients.length > 0 && displayOrder.forbiddenIngredients.map(id => {
                     const ing = getIngredientById(id)!
                     return (
                       <span key={id} className="text-xs px-2 py-0.5 rounded-full border border-red-600/60 bg-red-950/60 text-red-300">
@@ -2096,15 +2424,56 @@ export default function MalatangGame() {
           </div>
         )}
 
-        {/* Conveyor Belt */}
+        {/* Ingredient Section — Conveyor (Day 2+) or Static Grid (Day 1) */}
         <div ref={ingredientsRef}>
-          <p className="text-orange-400/70 text-xs mb-1 font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
-          <ConveyorBeltComponent
-            items={conveyorItems}
-            onGrab={grabConveyorItem}
-            stage={shopStage}
-            getIngredient={getIngredientById}
-          />
+          {showConveyor ? (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-orange-400/70 text-xs font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
+                {showConveyorNewBadge && (
+                  <span className="text-xs bg-green-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">NEW!</span>
+                )}
+              </div>
+              <ConveyorBeltComponent
+                items={conveyorItems}
+                onGrab={grabConveyorItem}
+                stage={shopStage}
+                getIngredient={getIngredientById}
+              />
+            </>
+          ) : (
+            <>
+              <p className="text-orange-400/70 text-xs mb-2 font-bold">🥘 食材を選ぼう！（クリックして鍋に入れる）</p>
+              <div className="grid grid-cols-4 gap-2">
+                {day1Ingredients.map(ing => {
+                  const isInPot = potIngredients.some(p => p.includes(ing.id))
+                  const inOrder = displayOrder?.ingredients.includes(ing.id)
+                  return (
+                    <button
+                      key={ing.id}
+                      onClick={() => {
+                        if (isServing) return
+                        if (isInPot) return
+                        playSound('sizzle')
+                        const dropId = dropIdRef.current++
+                        setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
+                        setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
+                        setPotIngredients(pots => pots.map((p, i) => i === selectedPot ? [...p, ing.id] : p))
+                      }}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 border-2 transition-all active:scale-95
+                        ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
+                          inOrder ? 'border-orange-400 bg-orange-900/60 shadow-lg shadow-orange-500/20' :
+                          'border-orange-800/40 bg-orange-950/60 hover:border-orange-600'}`}
+                    >
+                      <span className="text-2xl">{ing.emoji}</span>
+                      <span className="text-xs text-orange-200">{ing.name}</span>
+                      {isInPot && <span className="text-green-400 text-xs">✅</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Spice selection row */}
@@ -2117,7 +2486,7 @@ export default function MalatangGame() {
               return (
                 <button key={ing.id}
                   onClick={() => {
-                    if (isServing || isTutorialActive) return
+                    if (isServing) return
                     setPotSpices(spices => spices.map((s, i) => i === selectedPot ? (s === ing.id ? '' : ing.id) : s))
                   }}
                   className={`flex-1 rounded-xl p-2 flex flex-col items-center gap-0.5 transition-all border-2 active:scale-95
@@ -2156,7 +2525,10 @@ export default function MalatangGame() {
         )}
 
         {/* Multi-Pot Area */}
-        <div ref={potRef}>
+        <div ref={potRef} className="relative">
+          {activeTooltip === 'pot' && (
+            <InGameTooltip message="鍋に入ったよ！提供ボタンを押そう！" position="top" />
+          )}
           <div className="flex items-center justify-between mb-1">
             <p className="text-orange-400/70 text-xs font-bold">🍲 鍋（クリックして選択）</p>
             <p className="text-orange-300/50 text-xs">選択中: 鍋 {selectedPot + 1}</p>
@@ -2203,15 +2575,7 @@ export default function MalatangGame() {
         </AnimatePresence>
       </motion.main>
 
-      {/* Tutorial overlay */}
-      {isTutorialActive && (
-        <TutorialOverlay
-          step={tutorialStep}
-          onNext={advanceTutorial}
-          onSkip={finishTutorial}
-          targetRefs={targetRefs}
-        />
-      )}
+      {/* Contextual in-game tooltips (Day 1 onboarding) are shown inline */}
     </>
   )
 }
