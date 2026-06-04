@@ -271,9 +271,9 @@ export default function MalatangGame() {
     }
 
     // Check ingredients
-    const correctItems = [...orderSet].filter(id => selected.has(id))
-    const missingItems = [...orderSet].filter(id => !selected.has(id))
-    const extraItems = [...selected].filter(id => !orderSet.has(id))
+    const correctItems = Array.from(orderSet).filter(id => selected.has(id))
+    const missingItems = Array.from(orderSet).filter(id => !selected.has(id))
+    const extraItems = Array.from(selected).filter(id => !orderSet.has(id))
 
     delta += correctItems.length * 20
     delta -= missingItems.length * 20
@@ -619,7 +619,7 @@ export default function MalatangGame() {
               {selectedIngredients.size === 0 && !selectedSpice && (
                 <p className="text-orange-300/40 text-xs text-center py-2">まだ何も入れていません</p>
               )}
-              {[...selectedIngredients].map(id => {
+              {Array.from(selectedIngredients).map(id => {
                 const ing = getIngredientById(id)!
                 const inOrder = order.ingredients.includes(id)
                 return (
