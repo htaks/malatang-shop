@@ -172,7 +172,7 @@ function IngredientButton({ ingredient, selected, inOrder, onClick }: Ingredient
   let bgClass = 'bg-orange-950/60 hover:bg-orange-900/80'
   if (selected && inOrder) { borderClass = 'border-2 border-green-400'; bgClass = 'bg-green-900/60' }
   else if (selected && !inOrder) { borderClass = 'border-2 border-red-400'; bgClass = 'bg-red-900/60' }
-  else if (!selected && inOrder) { borderClass = 'border-2 border-yellow-500/60 border-dashed'; bgClass = 'bg-orange-950/40' }
+  else if (!selected && inOrder) { borderClass = 'border-2 border-transparent'; bgClass = 'bg-orange-950/60' }
 
   return (
     <button onClick={onClick}
@@ -503,6 +503,7 @@ export default function MalatangGame() {
           <div className="text-8xl mb-6 animate-bubble">🍲</div>
           <h1 className="text-5xl font-black text-orange-300 mb-2 drop-shadow-lg">マーラータン屋さん</h1>
           <p className="text-orange-400 text-lg mb-2">麻辣烫 Shop Game</p>
+          <p className="text-orange-300/30 text-xs mb-2">v1.1.0</p>
           <p className="text-orange-300/70 text-sm mb-10 max-w-sm mx-auto">
             お客さんの注文通りに食材を選んで、おいしいマーラータンを作ろう！
           </p>
@@ -662,7 +663,7 @@ export default function MalatangGame() {
                           className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 active:scale-95 cursor-pointer
                             ${isSelected && inOrder ? 'border-2 border-green-400 bg-green-900/60'
                               : isSelected && !inOrder ? 'border-2 border-red-400 bg-red-900/60'
-                              : !isSelected && inOrder ? 'border-2 border-dashed border-yellow-500/60 bg-orange-950/40'
+                              : !isSelected && inOrder ? 'border-2 border-transparent bg-orange-950/60'
                               : 'border-2 border-transparent bg-orange-950/60 hover:bg-orange-900/80'}`}>
                           <span className="text-xl leading-none select-none">{ing.emoji}</span>
                           <span className="text-xs text-orange-100 font-medium">{ing.name}</span>
