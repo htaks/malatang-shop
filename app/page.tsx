@@ -3418,81 +3418,82 @@ export default function MalatangGame() {
             </div>
           )}
 
-          {/* ── INGREDIENT GRID (Day 1) or CONVEYOR (Day 2+) ── */}
-          <div ref={ingredientsRef} className="px-3 flex-1 min-h-0 flex flex-col">
-            {showConveyor ? (
-              <>
-                <div className="flex items-center gap-2 mb-1 shrink-0">
-                  <p className="text-orange-400/70 text-xs font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
-                  {showConveyorNewBadge && (
-                    <span className="text-xs bg-green-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">NEW!</span>
-                  )}
-                </div>
-                <ConveyorBeltComponent
-                  items={conveyorItems}
-                  onGrab={grabConveyorItem}
-                  stage={shopStage}
-                  getIngredient={getIngredientById}
-                />
-              </>
-            ) : (
-              <div className="grid grid-cols-4 gap-1 content-start">
-                {day1Ingredients.map(ing => {
-                  const isInPot = potIngredients.some(p => p.includes(ing.id))
-                  const inOrder = displayOrder?.ingredients.includes(ing.id)
-                  return (
-                    <button
-                      key={ing.id}
-                      onClick={() => {
-                        if (isServing) return
-                        if (isInPot) return
-                        playSound('sizzle')
-                        const dropId = dropIdRef.current++
-                        setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
-                        setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
-                        setPotIngredients(pots => pots.map((p, i) => i === selectedPot ? [...p, ing.id] : p))
-                      }}
-                      className={`rounded-xl py-1.5 flex flex-col items-center gap-0.5 border-2 transition-all active:scale-95
-                        ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
-                          inOrder ? 'border-yellow-400 bg-yellow-900/50 shadow-lg shadow-yellow-500/30 animate-pulse' :
-                          'border-orange-800/40 bg-orange-950/60'}`}
-                    >
-                      <span className="text-lg">{ing.emoji}</span>
-                      <span className={`text-xs font-bold leading-tight ${inOrder && !isInPot ? 'text-yellow-300' : 'text-orange-200'}`}>{ing.name}</span>
-                      {isInPot ? <span className="text-green-400 text-xs leading-none">✅</span>
-                        : inOrder ? <span className="text-yellow-400 text-xs leading-none">👆</span>
-                        : <span className="text-xs leading-none opacity-0">·</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          {/* ── INGREDIENT GRID + POT (side by side) ── */}
+          <div ref={ingredientsRef} className="px-3 flex-1 min-h-0 flex gap-2">
 
-          {/* ── POT AREA ── */}
-          <div ref={potRef} className="px-3 pb-2 shrink-0 relative">
-            {activeTooltip === 'pot' && (
-              <InGameTooltip message="鍋に入ったよ！提供ボタンを押そう！" position="top" />
-            )}
-            {numPots > 1 && (
-              <p className="text-orange-300/50 text-xs mb-1">🍲 選択中: 鍋 {selectedPot + 1}</p>
-            )}
-            <div className={`grid gap-2 ${numPots === 1 ? 'grid-cols-1' : numPots === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-              {Array.from({ length: numPots }, (_, i) => (
-                <div key={i}>
-                  <PotDisplay
-                    potIndex={i}
-                    isSelected={selectedPot === i}
-                    selectedIngredients={new Set(potIngredients[i] ?? [])}
-                    cookingItems={cookingItems.filter(ci => ci.potIndex === i)}
-                    currentOrder={order}
-                    onSelect={idx => setSelectedPot(idx)}
-                    onServe={idx => handleServe(idx, false)}
-                    isServing={isServing}
-                    spiceLevel={potSpices[i] ?? ''}
+            {/* Left: ingredient grid or conveyor */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              {showConveyor ? (
+                <>
+                  <div className="flex items-center gap-2 mb-1 shrink-0">
+                    <p className="text-orange-400/70 text-xs font-bold">🏭 コンベア</p>
+                    {showConveyorNewBadge && (
+                      <span className="text-xs bg-green-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">NEW!</span>
+                    )}
+                  </div>
+                  <ConveyorBeltComponent
+                    items={conveyorItems}
+                    onGrab={grabConveyorItem}
+                    stage={shopStage}
+                    getIngredient={getIngredientById}
                   />
+                </>
+              ) : (
+                <div className="grid grid-cols-4 gap-1 h-full content-center">
+                  {day1Ingredients.map(ing => {
+                    const isInPot = potIngredients.some(p => p.includes(ing.id))
+                    const inOrder = displayOrder?.ingredients.includes(ing.id)
+                    return (
+                      <button
+                        key={ing.id}
+                        onClick={() => {
+                          if (isServing) return
+                          if (isInPot) return
+                          playSound('sizzle')
+                          const dropId = dropIdRef.current++
+                          setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
+                          setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
+                          setPotIngredients(pots => pots.map((p, i) => i === selectedPot ? [...p, ing.id] : p))
+                        }}
+                        className={`rounded-lg py-1 flex flex-col items-center gap-0.5 border-2 transition-all active:scale-95
+                          ${isInPot ? 'border-green-500 bg-green-900/40 opacity-50' :
+                            inOrder ? 'border-yellow-400 bg-yellow-900/50 animate-pulse' :
+                            'border-orange-800/40 bg-orange-950/60'}`}
+                      >
+                        <span className="text-base">{ing.emoji}</span>
+                        <span className={`text-xs font-bold leading-tight ${inOrder && !isInPot ? 'text-yellow-300' : 'text-orange-200'}`} style={{fontSize:'10px'}}>{ing.name}</span>
+                        {isInPot ? <span className="text-green-400 leading-none" style={{fontSize:'10px'}}>✅</span>
+                          : inOrder ? <span className="text-yellow-400 leading-none" style={{fontSize:'10px'}}>👆</span>
+                          : <span className="leading-none opacity-0" style={{fontSize:'10px'}}>·</span>}
+                      </button>
+                    )
+                  })}
                 </div>
-              ))}
+              )}
+            </div>
+
+            {/* Right: pot(s) + serve button */}
+            <div ref={potRef} className="flex flex-col gap-1 shrink-0 relative" style={{width:'38%'}}>
+              {activeTooltip === 'pot' && (
+                <InGameTooltip message="提供ボタンを押そう！" position="top" />
+              )}
+              <div className={`grid gap-1 flex-1 ${numPots === 1 ? 'grid-cols-1' : numPots === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {Array.from({ length: numPots }, (_, i) => (
+                  <div key={i}>
+                    <PotDisplay
+                      potIndex={i}
+                      isSelected={selectedPot === i}
+                      selectedIngredients={new Set(potIngredients[i] ?? [])}
+                      cookingItems={cookingItems.filter(ci => ci.potIndex === i)}
+                      currentOrder={order}
+                      onSelect={idx => setSelectedPot(idx)}
+                      onServe={idx => handleServe(idx, false)}
+                      isServing={isServing}
+                      spiceLevel={potSpices[i] ?? ''}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
