@@ -73,6 +73,10 @@ test.describe('ランキング画面', () => {
 test.describe('チュートリアル', () => {
   test('first play goes straight to Day 1 (staged onboarding replaces old tutorial)', async ({ page }) => {
     // Old tutorial overlay replaced by staged Day 1 experience
+    // Suppress daily bonus to ensure we go straight to game
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.click('text=1人プレイ')
     const text = await getBodyText(page)
@@ -82,6 +86,9 @@ test.describe('チュートリアル', () => {
   })
 
   test('Day 1 shows contextual help (食材を選ぼう)', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('malatang_lastLoginDate', new Date().toDateString())
+    })
     await page.goto('/')
     await page.click('text=1人プレイ')
     const text = await getBodyText(page)
