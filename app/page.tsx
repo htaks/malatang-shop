@@ -205,10 +205,30 @@ function checkSecretCombo(selectedIds: string[]): SecretCombo | null {
 
 // ─── Web Audio SFX ───────────────────────────────────────────────────────────
 
+// Shared AudioContext — created once on first user interaction to avoid
+// "AudioContext was not allowed to start" browser policy errors.
+let sharedAudioCtx: AudioContext | null = null
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null
+  try {
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {})
+    }
+    return sharedAudioCtx
+  } catch {
+    return null
+  }
+}
+
 function playSound(type: 'coin' | 'error' | 'combo' | 'sizzle') {
   if (typeof window === 'undefined') return
   try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const ctx = getAudioContext()
+    if (!ctx) return
     const master = ctx.createGain()
     master.gain.value = 0.3
     master.connect(ctx.destination)
@@ -1070,31 +1090,32 @@ export default function MalatangGame() {
     return () => { if (cookingTimerRef.current) clearInterval(cookingTimerRef.current) }
   }, [phase])
 
-  // Move ready items into pot
+  // Move ready items into pot — run as a plain effect, not inside a state updater
   useEffect(() => {
-    setCookingItems(prev => {
-      const newlyReady = prev.filter(ci => ci.ready)
-      if (newlyReady.length === 0) return prev
-      for (const ci of newlyReady) {
-        const ing = getIngredientById(ci.ingredientId)
-        if (ing) {
-          playSound('sizzle')
-          const dropId = dropIdRef.current++
-          setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
-          setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
-        }
-        setPotIngredients(pots => {
-          const next = pots.map(p => [...p])
-          const pIdx = Math.min(ci.potIndex, next.length - 1)
-          if (!next[pIdx].includes(ci.ingredientId)) {
-            next[pIdx] = [...next[pIdx], ci.ingredientId]
-          }
-          return next
-        })
+    const newlyReady = cookingItems.filter(ci => ci.ready)
+    if (newlyReady.length === 0) return
+
+    // Remove ready items from cooking queue
+    setCookingItems(prev => prev.filter(ci => !ci.ready))
+
+    // Move each ready item into its pot and trigger animations
+    for (const ci of newlyReady) {
+      const ing = getIngredientById(ci.ingredientId)
+      if (ing) {
+        playSound('sizzle')
+        const dropId = dropIdRef.current++
+        setDropAnimations(d => [...d, { id: dropId, emoji: ing.emoji }])
+        setTimeout(() => setDropAnimations(d => d.filter(x => x.id !== dropId)), 700)
       }
-      return prev.filter(ci => !ci.ready)
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      setPotIngredients(pots => {
+        const next = pots.map(p => [...p])
+        const pIdx = Math.min(ci.potIndex, next.length - 1)
+        if (!next[pIdx].includes(ci.ingredientId)) {
+          next[pIdx] = [...next[pIdx], ci.ingredientId]
+        }
+        return next
+      })
+    }
   }, [cookingItems])
 
   // ── Conveyor belt spawner ─────────────────────────────────────────────────────
@@ -1152,12 +1173,8 @@ export default function MalatangGame() {
     }, 1000)
   }, [stopTimer])
 
-  useEffect(() => {
-    if ((phase === 'playing' || phase === 'p2playing') && !isTutorialActive && timeLeft === 0 && !isServing) {
-      handleServe(0, true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, phase, isTutorialActive])
+  // Keep a ref to the latest handleServe so the timer effect never goes stale
+  const handleServeRef = useRef<(potIndex: number, timedOut?: boolean) => void>(() => {})
 
   useEffect(() => () => stopTimer(), [stopTimer])
 
@@ -1211,7 +1228,9 @@ export default function MalatangGame() {
 
   // ── Game flow ─────────────────────────────────────────────────────────────────
 
-  const beginPlaying = useCallback((resetAll = true, currentStock?: Stock, p2 = false) => {
+  // p2: true = starting P2's turn (phase='p2playing'), false = starting P1's turn or solo
+  // isP2ModeVal: whether the overall session is 2-player (preserved across P1→P2 transition)
+  const beginPlaying = useCallback((resetAll = true, currentStock?: Stock, p2 = false, isP2ModeVal?: boolean) => {
     const lv = 1
     const stage: ShopStage = 1
     const stockToUse = currentStock ?? buildInitialStock()
@@ -1227,7 +1246,13 @@ export default function MalatangGame() {
       setSatisfaction(100)
       setStock(stockToUse)
       setProcurementBudget(500)
-      if (!p2) { setRivalScore(0); setIsP2Mode(false) }
+      // Only reset rival & isP2Mode for a fresh solo game
+      if (isP2ModeVal === undefined && !p2) {
+        setRivalScore(0)
+        setIsP2Mode(false)
+      } else if (isP2ModeVal !== undefined) {
+        setIsP2Mode(isP2ModeVal)
+      }
     }
 
     const queue = spawnCustomersForQueue(lv, stage, null, stockToUse, 0)
@@ -1262,7 +1287,8 @@ export default function MalatangGame() {
       setTimeLeft(30); setMaxTime(30)
       setPhase('playing')
     } else {
-      beginPlaying(true, undefined, p2)
+      // For 2P mode: start P1's turn (p2=false) but mark session as 2P (isP2ModeVal=p2)
+      beginPlaying(true, undefined, false, p2 ? true : undefined)
     }
   }, [beginPlaying])
 
@@ -1384,7 +1410,18 @@ export default function MalatangGame() {
     setPotSpices(spices => spices.map((s, i) => i === potIndex ? '' : s))
 
     setTimeout(() => {
-      if (newSatisfaction <= 0) { stopTimer(); setPhase('result'); setPostGameScore(newScore); return }
+      if (newSatisfaction <= 0) {
+        stopTimer()
+        // In 2P mode: if P1 just finished (playing phase), save P1 score and start P2
+        if (isP2Mode && phase === 'playing') {
+          setP1Score(newScore)
+          beginPlaying(false, undefined, true)
+        } else {
+          setPhase(isP2Mode ? 'p2result' : 'result')
+          setPostGameScore(newScore)
+        }
+        return
+      }
 
       // Remove served customer, advance queue
       setCustomerQueue(prev => {
@@ -1407,9 +1444,14 @@ export default function MalatangGame() {
             setIsServing(false)
           } else if (nextCustomerIndex >= CUSTOMERS_PER_DAY * MAX_DAYS) {
             stopTimer()
-            setPhase(isP2Mode ? 'p2result' : 'result')
-            setPostGameScore(newScore)
             setIsServing(false)
+            if (isP2Mode && phase === 'playing') {
+              setP1Score(newScore)
+              beginPlaying(false, undefined, true)
+            } else {
+              setPhase(isP2Mode ? 'p2result' : 'result')
+              setPostGameScore(newScore)
+            }
           } else {
             // Spawn new batch
             const newLevel = nextCustomerIndex >= 10 ? 3 : nextCustomerIndex >= 5 ? 2 : 1
@@ -1429,7 +1471,17 @@ export default function MalatangGame() {
         return remaining
       })
     }, 1400)
-  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, isP2Mode, stopTimer, startTimer, spawnCustomersForQueue])
+  }, [isServing, customerQueue, activeCustomerId, potIngredients, potSpices, combo, timeLeft, satisfaction, score, stock, customerIndex, level, isP2Mode, phase, stopTimer, startTimer, spawnCustomersForQueue, beginPlaying])
+
+  // Keep ref current so the timer effect always calls the latest version
+  useEffect(() => { handleServeRef.current = handleServe }, [handleServe])
+
+  // Auto-serve when timer hits 0 — uses ref to avoid stale closure
+  useEffect(() => {
+    if ((phase === 'playing' || phase === 'p2playing') && !isTutorialActive && timeLeft === 0 && !isServing) {
+      handleServeRef.current(0, true)
+    }
+  }, [timeLeft, phase, isTutorialActive, isServing])
 
   const handleProcurementDone = useCallback((newStock: Stock, spent: number) => {
     const newScore = Math.max(0, score - spent)
@@ -1532,7 +1584,7 @@ export default function MalatangGame() {
             <button onClick={() => {
               setIsP2Mode(true)
               setP1Score(0)
-              startGame(false)
+              startGame(true)
             }}
               className="w-full bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-600 hover:to-pink-500
                 text-white font-black text-xl px-12 py-4 rounded-full shadow-xl
@@ -1680,7 +1732,7 @@ export default function MalatangGame() {
           {winner === 'draw' && <p className="text-orange-300 font-black text-2xl mb-8">🤝 引き分け！</p>}
 
           <div className="flex gap-3 justify-center flex-wrap">
-            <button onClick={() => { setIsP2Mode(true); setP1Score(0); beginPlaying(true, undefined, false) }}
+            <button onClick={() => { setP1Score(0); beginPlaying(true, undefined, false, true) }}
               className="bg-gradient-to-r from-purple-700 to-pink-600 text-white font-bold px-8 py-3 rounded-full transition-all active:scale-95">
               🔄 再戦
             </button>
