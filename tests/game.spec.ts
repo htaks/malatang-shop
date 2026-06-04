@@ -4,6 +4,14 @@ async function getBodyText(page: Page): Promise<string> {
   return page.evaluate(() => document.body.innerText)
 }
 
+// h1はアニメーションで1文字ずつspanに分割されるため、textContentを結合して取得
+async function getTitleText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const h1 = document.querySelector('h1')
+    return h1 ? h1.textContent ?? '' : ''
+  })
+}
+
 async function skipTutorial(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('malatang_tutorial_done', '1')
@@ -17,8 +25,8 @@ test.describe('タイトル画面', () => {
   })
 
   test('shows title マーラータン屋さん', async ({ page }) => {
-    const text = await getBodyText(page)
-    expect(text).toContain('マーラータン屋さん')
+    const title = await getTitleText(page)
+    expect(title).toContain('マーラータン屋さん')
   })
 
   test('has 1人プレイ button', async ({ page }) => {
@@ -52,8 +60,9 @@ test.describe('ランキング画面', () => {
   test('has ← 戻る button that returns to title', async ({ page }) => {
     await page.click('text=ランキング')
     await page.click('text=← 戻る')
-    const text = await getBodyText(page)
-    expect(text).toContain('マーラータン屋さん')
+    await page.waitForTimeout(500)
+    const title = await getTitleText(page)
+    expect(title).toContain('マーラータン屋さん')
   })
 })
 

@@ -1,6 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import Character, { emojiToCharType, type Expression } from './components/Character'
+import ConveyorBeltComponent from './components/ConveyorBelt'
+import PotComponent from './components/Pot'
+import { CoinBurst, ConfettiEffect, AngerSmoke, AnimatedScore } from './components/Particles'
+import { useBGM } from './hooks/useBGM'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -420,8 +426,12 @@ function SteamEffect() {
   return (
     <div className="absolute -top-8 left-0 right-0 flex justify-around pointer-events-none">
       {[0, 1, 2].map(i => (
-        <div key={i} className="w-2 h-2 rounded-full bg-white/50 animate-steam"
-          style={{ animationDelay: `${i * 0.5}s` }} />
+        <motion.div
+          key={i}
+          className="w-2 h-2 rounded-full bg-white/50"
+          animate={{ y: [0, -30], opacity: [0.6, 0], scale: [0.5, 1.8] }}
+          transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.5, ease: 'easeOut' }}
+        />
       ))}
     </div>
   )
@@ -429,12 +439,23 @@ function SteamEffect() {
 
 function SatisfactionBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, value))
-  const color = pct > 60 ? 'bg-green-500' : pct > 30 ? 'bg-yellow-500' : 'bg-red-500'
+  const gradient = pct > 60
+    ? 'linear-gradient(to right, #22c55e, #4ade80)'
+    : pct > 30
+    ? 'linear-gradient(to right, #eab308, #facc15)'
+    : 'linear-gradient(to right, #ef4444, #f97316)'
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-orange-300/80 whitespace-nowrap">😊 満足度</span>
-      <div className="flex-1 bg-orange-950 rounded-full h-2.5 overflow-hidden border border-orange-800">
-        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
+      <div className="flex-1 bg-orange-950 rounded-full h-3 overflow-hidden border border-orange-800 relative">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: gradient }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
+        {/* Shine overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent rounded-full pointer-events-none" />
       </div>
       <span className="text-xs text-orange-300/80 w-6 text-right">{pct}</span>
     </div>
@@ -449,12 +470,30 @@ function ComboFlashOverlay({ combo, onDone }: { combo: ComboOverlay; onDone: () 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-      <div className="bg-gradient-to-br from-yellow-600 to-orange-600 border-4 border-yellow-300 rounded-3xl px-10 py-8 shadow-2xl text-center animate-fadeIn">
-        <div className="text-5xl mb-2">{combo.emoji}</div>
+      <motion.div
+        className="bg-gradient-to-br from-yellow-600 to-orange-600 border-4 border-yellow-300 rounded-3xl px-10 py-8 shadow-2xl text-center"
+        initial={{ scale: 0.5, opacity: 0, rotate: -5 }}
+        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+      >
+        <motion.div
+          className="text-5xl mb-2"
+          animate={{ rotate: [0, -15, 15, -10, 10, 0], scale: [1, 1.3, 1] }}
+          transition={{ duration: 0.6 }}
+        >
+          {combo.emoji}
+        </motion.div>
         <div className="text-2xl font-black text-white mb-1">🎉 コンボ発動！</div>
         <div className="text-xl font-bold text-yellow-200 mb-2">{combo.name}</div>
-        <div className="text-3xl font-black text-yellow-300">+{combo.bonus} コイン！</div>
-      </div>
+        <motion.div
+          className="text-3xl font-black text-yellow-300"
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ delay: 0.3, duration: 0.4 }}
+        >
+          +{combo.bonus} コイン！
+        </motion.div>
+      </motion.div>
     </div>
   )
 }
@@ -772,65 +811,7 @@ function LeaderboardScreen({ onBack, currentScore, isPostGame, onNameSubmit }: {
   )
 }
 
-// ─── Conveyor Belt ────────────────────────────────────────────────────────────
-
-interface ConveyorBeltProps {
-  items: ConveyorItem[]
-  onGrab: (item: ConveyorItem) => void
-  stage: ShopStage
-}
-
-function ConveyorBelt({ items, onGrab, stage }: ConveyorBeltProps) {
-  return (
-    <div className="relative bg-orange-950/80 border border-orange-800/40 rounded-2xl overflow-hidden h-24 select-none">
-      <div className="absolute inset-0 flex items-center">
-        {/* Belt tracks */}
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-10 bg-gradient-to-b from-orange-900/60 to-orange-950/80 border-y border-orange-700/40" />
-        {/* Rollers */}
-        {[0, 25, 50, 75, 100].map(pct => (
-          <div key={pct} className="absolute w-4 h-12 bg-orange-800/50 rounded-full border border-orange-700/40"
-            style={{ left: `${pct}%`, top: '50%', transform: 'translate(-50%, -50%)' }} />
-        ))}
-      </div>
-
-      {/* Belt label */}
-      <div className="absolute top-1 left-2 text-orange-400/60 text-xs font-bold">
-        ▶ コンベア {stage >= 2 ? '⚡ 速い' : ''}
-      </div>
-
-      {/* Items on belt */}
-      {items.map(item => {
-        const ing = getIngredientById(item.ingredientId)
-        if (!ing) return null
-        const isRare = !!ing.unlockStage
-        return (
-          <button
-            key={item.id}
-            onClick={() => onGrab(item)}
-            className={`absolute top-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer z-10
-              hover:scale-125 active:scale-90 transition-transform
-              ${isRare ? 'animate-bubble' : ''}`}
-            style={{
-              animation: `conveyorMove ${item.duration}s linear forwards`,
-              animationDelay: '0s',
-            }}
-          >
-            <div className={`rounded-xl p-1.5 border-2 shadow-lg ${isRare ? 'border-yellow-400 bg-yellow-900/80' : 'border-orange-600/60 bg-orange-900/80'}`}>
-              <span className="text-2xl leading-none block">{ing.emoji}</span>
-            </div>
-            <span className="text-xs text-orange-200 font-medium whitespace-nowrap mt-0.5 drop-shadow">{ing.name}</span>
-          </button>
-        )
-      })}
-
-      {items.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-orange-400/40 text-xs">
-          食材待ち...
-        </div>
-      )}
-    </div>
-  )
-}
+// ConveyorBelt is imported from components/ConveyorBelt.tsx
 
 // Customer Queue
 interface CustomerQueueProps {
@@ -843,42 +824,76 @@ interface CustomerQueueProps {
 function CustomerQueue({ queue, activeCustomerId, now, onSelectCustomer }: CustomerQueueProps) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
-      {queue.map((qc, i) => {
-        const order = qc.order
-        const badge = customerTypeBadge(order.customerType)
-        const elapsed = qc.left ? qc.angerDuration : Math.min(qc.angerDuration, (now - qc.angerStart) / 1000)
-        const angerPct = Math.min(100, (elapsed / qc.angerDuration) * 100)
-        const isActive = qc.id === activeCustomerId
-        const angerColor = angerPct > 66 ? 'bg-red-500' : angerPct > 33 ? 'bg-yellow-500' : 'bg-green-500'
+      <AnimatePresence mode="popLayout">
+        {queue.map((qc, i) => {
+          const order = qc.order
+          const badge = customerTypeBadge(order.customerType)
+          const elapsed = qc.left ? qc.angerDuration : Math.min(qc.angerDuration, (now - qc.angerStart) / 1000)
+          const angerPct = Math.min(100, (elapsed / qc.angerDuration) * 100)
+          const isActive = qc.id === activeCustomerId
+          const angerGradient = angerPct > 66
+            ? 'linear-gradient(to right, #ef4444, #b91c1c)'
+            : angerPct > 33
+            ? 'linear-gradient(to right, #eab308, #f97316)'
+            : 'linear-gradient(to right, #22c55e, #16a34a)'
 
-        return (
-          <button
-            key={qc.id}
-            onClick={() => !qc.left && i === 0 && onSelectCustomer(qc.id)}
-            className={`flex-shrink-0 rounded-2xl p-3 border-2 transition-all text-left min-w-36
-              ${qc.left ? 'opacity-40 border-orange-800/20 bg-orange-950/20' :
-                isActive ? 'border-orange-400 bg-orange-900/80 shadow-lg shadow-orange-500/20' :
-                i === 0 ? 'border-orange-700/60 bg-orange-950/60 hover:border-orange-500' :
-                'border-orange-800/30 bg-orange-950/40 opacity-70'}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-2xl ${qc.reactionEmoji ? 'animate-customerReact' : ''}`}>
-                {qc.reactionEmoji || order.customerEmoji}
-              </span>
-              <div>
-                <div className="text-orange-200 text-xs font-bold">{order.customerName}</div>
-                {badge && <span className={`text-xs px-1 py-0.5 rounded-full ${badge.color}`}>{badge.label}</span>}
+          const charType = emojiToCharType(order.customerEmoji)
+          const expression: Expression = qc.reactionEmoji === '😊' ? 'happy'
+            : qc.reactionEmoji === '😤' ? 'angry'
+            : angerPct > 70 ? 'angry'
+            : angerPct > 40 ? 'neutral'
+            : isActive ? 'excited'
+            : 'neutral'
+
+          return (
+            <motion.button
+              key={qc.id}
+              layout
+              initial={{ x: 60, opacity: 0, scale: 0.8 }}
+              animate={{ x: 0, opacity: qc.left ? 0.4 : 1, scale: 1 }}
+              exit={{ x: -40, opacity: 0, scale: 0.8 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              onClick={() => !qc.left && i === 0 && onSelectCustomer(qc.id)}
+              className={`flex-shrink-0 rounded-2xl p-2 border-2 transition-colors text-left min-w-32 relative
+                ${qc.left ? 'border-orange-800/20 bg-orange-950/20' :
+                  isActive ? 'border-orange-400 bg-orange-900/80 shadow-lg shadow-orange-500/20' :
+                  i === 0 ? 'border-orange-700/60 bg-orange-950/60 hover:border-orange-500' :
+                  'border-orange-800/30 bg-orange-950/40'}`}
+            >
+              {/* Anger smoke if very angry */}
+              {angerPct > 80 && !qc.left && (
+                <div className="absolute -top-2 right-1 pointer-events-none">
+                  <AngerSmoke active={angerPct > 80} />
+                </div>
+              )}
+              <div className="flex items-center gap-2 mb-1">
+                <div className="relative">
+                  <Character
+                    type={charType}
+                    expression={expression}
+                    size={44}
+                  />
+                </div>
+                <div>
+                  <div className="text-orange-200 text-xs font-bold">{order.customerName}</div>
+                  {badge && <span className={`text-xs px-1 py-0.5 rounded-full ${badge.color}`}>{badge.label}</span>}
+                </div>
               </div>
-            </div>
-            {/* Anger bar */}
-            <div className="w-full bg-orange-950 rounded-full h-1.5 overflow-hidden border border-orange-800/40">
-              <div className={`h-full rounded-full transition-none ${angerColor}`}
-                style={{ width: `${angerPct}%` }} />
-            </div>
-            {qc.left && <div className="text-red-400 text-xs mt-1 font-bold">帰った 😤</div>}
-            {isActive && !qc.left && <div className="text-orange-300 text-xs mt-1 font-bold">→ 対応中</div>}
-          </button>
-        )
-      })}
+              {/* Anger bar */}
+              <div className="w-full bg-orange-950 rounded-full h-2 overflow-hidden border border-orange-800/40 relative">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: angerGradient }}
+                  animate={{ width: `${angerPct}%` }}
+                  transition={{ duration: 0.5, ease: 'linear' }}
+                />
+              </div>
+              {qc.left && <div className="text-red-400 text-xs mt-1 font-bold">帰った 😤</div>}
+              {isActive && !qc.left && <div className="text-orange-300 text-xs mt-1 font-bold animate-pulse">→ 対応中</div>}
+            </motion.button>
+          )
+        })}
+      </AnimatePresence>
     </div>
   )
 }
@@ -893,61 +908,72 @@ interface PotProps {
   onSelect: (idx: number) => void
   onServe: (idx: number) => void
   isServing: boolean
+  spiceLevel: string
 }
 
-function PotDisplay({ potIndex, isSelected, selectedIngredients, cookingItems, currentOrder, onSelect, onServe, isServing }: PotProps) {
-  const potItems = Array.from(selectedIngredients).filter((_, __) => true) // all selected for this pot
-  // Actually we need to track per-pot; we'll use a flat approach per pot
+function PotDisplay({ potIndex, isSelected, selectedIngredients, cookingItems, currentOrder, onSelect, onServe, isServing, spiceLevel }: PotProps) {
+  const potItems = Array.from(selectedIngredients)
   const order = currentOrder
+  const isPotComplete = order !== null && order.ingredients.every(id => potItems.includes(id)) && potItems.length > 0
 
   return (
-    <div
+    <motion.div
       onClick={() => onSelect(potIndex)}
-      className={`bg-orange-950/60 border-2 rounded-2xl p-3 cursor-pointer transition-all flex flex-col
-        ${isSelected ? 'border-orange-400 shadow-lg shadow-orange-500/30' : 'border-orange-800/40 hover:border-orange-600/60'}`}>
+      className={`bg-orange-950/60 border-2 rounded-2xl p-3 cursor-pointer flex flex-col
+        ${isSelected ? 'border-orange-400 shadow-lg shadow-orange-500/30' : 'border-orange-800/40 hover:border-orange-600/60'}`}
+      whileHover={{ scale: 1.01 }}
+      transition={{ duration: 0.15 }}
+    >
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-orange-300 font-bold text-xs">鍋 {potIndex + 1} {isSelected ? '◀ 選択中' : ''}</h3>
-        {isSelected && <span className="text-xs text-orange-400/60">クリックして選択</span>}
+        {isSelected && <span className="text-xs text-orange-400/60 animate-pulse">● 選択中</span>}
       </div>
 
-      <div className="relative flex justify-center mb-2">
-        <SteamEffect />
-        <div className="relative w-24 h-20 pot-glow">
-          <div className="absolute inset-x-2 top-3 bottom-0 bg-gradient-to-b from-red-900 to-red-950 rounded-b-3xl border-2 border-red-700/60 overflow-hidden">
-            <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-orange-900/80 to-transparent animate-bubble" />
-          </div>
-          <div className="absolute inset-x-0 top-3 h-2.5 bg-gradient-to-b from-red-700 to-red-800 rounded-full border border-red-600/40" />
-          <div className="absolute top-4 -left-1.5 w-3 h-4 border-2 border-red-700 rounded-l-full" />
-          <div className="absolute top-4 -right-1.5 w-3 h-4 border-2 border-red-700 rounded-r-full" />
-        </div>
+      <div className="flex justify-center mb-2">
+        <PotComponent
+          isSelected={isSelected}
+          spiceLevel={spiceLevel}
+          ingredients={potItems}
+          isComplete={isPotComplete}
+        />
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-0.5 max-h-28 min-h-0">
+      <div className="flex-1 overflow-y-auto space-y-0.5 max-h-24 min-h-0">
         {potItems.length === 0 && <p className="text-orange-300/40 text-xs text-center py-1">空の鍋</p>}
-        {potItems.map(id => {
-          const ing = getIngredientById(id)!
-          const inOrder = order ? order.ingredients.includes(id) : false
-          const isForbidden = order?.customerType === 'allergic' && (order?.forbiddenIngredients ?? []).includes(id)
-          return (
-            <div key={id} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg
-              ${isForbidden ? 'text-red-300 bg-red-950/60' : inOrder ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/30'}`}>
-              <span>{ing.emoji}</span>
-              <span className="truncate">{ing.name}</span>
-              <span className="ml-auto">{isForbidden ? '❌' : inOrder ? '✓' : '✗'}</span>
-            </div>
-          )
-        })}
+        <AnimatePresence>
+          {potItems.map(id => {
+            const ing = getIngredientById(id)!
+            const inOrder = order ? order.ingredients.includes(id) : false
+            const isForbidden = order?.customerType === 'allergic' && (order?.forbiddenIngredients ?? []).includes(id)
+            return (
+              <motion.div
+                key={id}
+                initial={{ x: -10, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 10, opacity: 0 }}
+                className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg
+                  ${isForbidden ? 'text-red-300 bg-red-950/60' : inOrder ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/30'}`}
+              >
+                <span>{ing.emoji}</span>
+                <span className="truncate">{ing.name}</span>
+                <span className="ml-auto">{isForbidden ? '❌' : inOrder ? '✓' : '✗'}</span>
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
       </div>
 
-      <button
+      <motion.button
         onClick={e => { e.stopPropagation(); onServe(potIndex) }}
         disabled={isServing}
         className="mt-2 w-full bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400
-          disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs py-2 rounded-xl
-          transition-all active:scale-95">
+          disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs py-2 rounded-xl"
+        whileTap={{ scale: 0.93 }}
+        whileHover={{ scale: 1.02 }}
+      >
         🍲 提供
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   )
 }
 
@@ -1018,6 +1044,13 @@ export default function MalatangGame() {
   // Leaderboard
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [postGameScore, setPostGameScore] = useState<number | undefined>(undefined)
+
+  // Visual effects
+  const [screenShake, setScreenShake] = useState(false)
+  const [showConfetti, setShowConfetti] = useState(false)
+  const [activeCoinBurst, setActiveCoinBurst] = useState(false)
+  const [lastCoinAmount, setLastCoinAmount] = useState(0)
+  const bgm = useBGM()
 
   // Tutorial refs
   const customerRef = useRef<HTMLDivElement>(null)
@@ -1398,6 +1431,20 @@ export default function MalatangGame() {
     setCoinAnimations(prev => [...prev, { id, x: 50, y: 50, amount: Math.abs(delta), positive: delta >= 0 }])
     setTimeout(() => setCoinAnimations(prev => prev.filter(c => c.id !== id)), 900)
 
+    // Visual effects
+    if (isPerfect) {
+      setActiveCoinBurst(true)
+      setLastCoinAmount(delta)
+      setTimeout(() => setActiveCoinBurst(false), 800)
+      if (newCombo >= 3) {
+        setShowConfetti(true)
+        setTimeout(() => setShowConfetti(false), 2000)
+      }
+    } else {
+      setScreenShake(true)
+      setTimeout(() => setScreenShake(false), 500)
+    }
+
     const nextCustomerIndex = customerIndex + 1
     setCustomerIndex(nextCustomerIndex)
     setPrevOrder(order)
@@ -1412,6 +1459,7 @@ export default function MalatangGame() {
     setTimeout(() => {
       if (newSatisfaction <= 0) {
         stopTimer()
+        bgm.stop()
         // In 2P mode: if P1 just finished (playing phase), save P1 score and start P2
         if (isP2Mode && phase === 'playing') {
           setP1Score(newScore)
@@ -1482,6 +1530,15 @@ export default function MalatangGame() {
       handleServeRef.current(0, true)
     }
   }, [timeLeft, phase, isTutorialActive, isServing])
+
+  // BGM tempo based on time urgency
+  useEffect(() => {
+    if (phase === 'playing' || phase === 'p2playing') {
+      const urgency = maxTime > 0 ? Math.max(0, 1 - timeLeft / maxTime) : 0
+      bgm.setTempo(urgency)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, phase])
 
   const handleProcurementDone = useCallback((newStock: Stock, spent: number) => {
     const newScore = Math.max(0, score - spent)
@@ -1561,47 +1618,128 @@ export default function MalatangGame() {
 
   if (phase === 'title') {
     const board = loadLeaderboard()
+    const titleChars = 'マーラータン屋さん'.split('')
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-4 select-none">
-        <div className="text-center animate-fadeIn max-w-sm w-full">
-          <div className="text-8xl mb-6 animate-bubble">🍲</div>
-          <h1 className="text-5xl font-black text-orange-300 mb-2 drop-shadow-lg">マーラータン屋さん</h1>
-          <p className="text-orange-400 text-lg mb-1">麻辣烫 Shop Game</p>
-          <p className="text-orange-300/30 text-xs mb-2">v3.0.0</p>
-          <p className="text-orange-300/70 text-sm mb-8 max-w-sm mx-auto">
+      <main
+        className="min-h-screen flex flex-col items-center justify-center p-4 select-none"
+        style={{
+          background: 'linear-gradient(135deg, #1C0A00 0%, #3D1200 30%, #1C0A00 60%, #2D0A0A 100%)',
+          backgroundSize: '200% 200%',
+          animation: 'gradientShift 8s ease infinite',
+        }}
+      >
+        {/* Decorative background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(12)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="absolute text-4xl opacity-10"
+              style={{ left: `${(i * 17 + 5) % 100}%`, top: `${(i * 13 + 10) % 90}%` }}
+              animate={{ y: [0, -15, 0], rotate: [0, 10, -10, 0] }}
+              transition={{ duration: 3 + i * 0.5, repeat: Infinity, delay: i * 0.3 }}
+            >
+              {['🍲', '🌶️', '🥬', '🦐', '🥩', '🍜'][i % 6]}
+            </motion.div>
+          ))}
+        </div>
+
+        <div className="text-center max-w-sm w-full relative z-10">
+          {/* Animated pot logo */}
+          <motion.div
+            className="text-8xl mb-4 inline-block"
+            animate={{ y: [0, -8, 0], rotate: [-2, 2, -2] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            🍲
+          </motion.div>
+
+          {/* Staggered title letters */}
+          <h1 className="text-4xl font-black mb-2 drop-shadow-lg flex justify-center flex-wrap gap-0">
+            {titleChars.map((ch, i) => (
+              <motion.span
+                key={i}
+                className="text-orange-300"
+                initial={{ opacity: 0, y: -20, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: 0.05 * i, type: 'spring', stiffness: 300, damping: 20 }}
+              >
+                {ch}
+              </motion.span>
+            ))}
+          </h1>
+
+          <motion.p
+            className="text-orange-400 text-lg mb-1"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+          >
+            麻辣烫 Shop Game
+          </motion.p>
+          <motion.p
+            className="text-orange-300/30 text-xs mb-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7 }}
+          >
+            v3.0.0
+          </motion.p>
+          <motion.p
+            className="text-orange-300/70 text-sm mb-8 max-w-sm mx-auto"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+          >
             お客さんの注文通りに食材を選んで、おいしいマーラータンを作ろう！
             コンベアから食材を取り、複数の鍋で同時に調理しよう！
-          </p>
+          </motion.p>
 
-          <div className="space-y-3 mb-8">
-            <button onClick={() => startGame(false)}
-              className="w-full bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400
-                text-white font-black text-xl px-12 py-4 rounded-full shadow-xl
-                transition-all duration-150 active:scale-95 hover:scale-105 hover:shadow-orange-500/30 hover:shadow-2xl">
+          <motion.div
+            className="space-y-3 mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9 }}
+          >
+            <motion.button
+              onClick={() => { bgm.start(); startGame(false) }}
+              className="w-full bg-gradient-to-r from-red-600 to-orange-500 text-white font-black text-xl px-12 py-4 rounded-full shadow-xl"
+              whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(239,68,68,0.5)' }}
+              whileTap={{ scale: 0.95 }}
+            >
               🍲 1人プレイ
-            </button>
+            </motion.button>
 
-            <button onClick={() => {
-              setIsP2Mode(true)
-              setP1Score(0)
-              startGame(true)
-            }}
-              className="w-full bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-600 hover:to-pink-500
-                text-white font-black text-xl px-12 py-4 rounded-full shadow-xl
-                transition-all duration-150 active:scale-95 hover:scale-105">
+            <motion.button
+              onClick={() => {
+                bgm.start()
+                setIsP2Mode(true)
+                setP1Score(0)
+                startGame(true)
+              }}
+              className="w-full bg-gradient-to-r from-purple-700 to-pink-600 text-white font-black text-xl px-12 py-4 rounded-full shadow-xl"
+              whileHover={{ scale: 1.05, boxShadow: '0 0 25px rgba(168,85,247,0.5)' }}
+              whileTap={{ scale: 0.95 }}
+            >
               👥 2人対戦モード
-            </button>
+            </motion.button>
 
-            <button onClick={() => { setShowLeaderboard(true); setPostGameScore(undefined); setPhase('leaderboard') }}
-              className="w-full bg-orange-950 border border-orange-700 hover:bg-orange-900
-                text-orange-300 font-bold text-lg px-12 py-3 rounded-full
-                transition-all duration-150 active:scale-95">
+            <motion.button
+              onClick={() => { setShowLeaderboard(true); setPostGameScore(undefined); setPhase('leaderboard') }}
+              className="w-full bg-orange-950/80 border border-orange-700 text-orange-300 font-bold text-lg px-12 py-3 rounded-full"
+              whileHover={{ scale: 1.03, borderColor: 'rgba(251,146,60,0.8)' }}
+              whileTap={{ scale: 0.97 }}
+            >
               🏆 ランキング
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
 
           {board.length > 0 && (
-            <div className="bg-orange-950/60 border border-orange-800/40 rounded-2xl p-4">
+            <motion.div
+              className="bg-orange-950/60 border border-orange-800/40 rounded-2xl p-4 backdrop-blur-sm"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.1 }}
+            >
               <p className="text-orange-400/70 text-xs mb-2 font-bold">🏆 TOP 3</p>
               {board.slice(0, 3).map((entry, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm mb-1">
@@ -1610,7 +1748,7 @@ export default function MalatangGame() {
                   <span className="text-yellow-400 font-bold">{entry.score.toLocaleString()}</span>
                 </div>
               ))}
-            </div>
+            </motion.div>
           )}
 
           <p className="text-orange-300/40 text-xs mt-4">初回プレイ時はチュートリアルがあります</p>
@@ -1627,15 +1765,38 @@ export default function MalatangGame() {
     const qualifies = qualifiesForLeaderboard(score)
 
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-4 select-none">
-        <div className="text-center animate-fadeIn max-w-md w-full">
-          <div className="text-7xl mb-4">{score >= 300 ? '🎉' : '😢'}</div>
+      <main className="min-h-screen flex flex-col items-center justify-center p-4 select-none"
+        style={{ background: 'linear-gradient(135deg, #1C0A00, #2D0A0A, #1C0A00)' }}
+      >
+        {score >= 300 && <ConfettiEffect active={true} />}
+        <motion.div
+          className="text-center max-w-md w-full"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+        >
+          <motion.div
+            className="text-7xl mb-4"
+            animate={{ rotate: [0, -10, 10, -5, 5, 0], scale: [1, 1.2, 1] }}
+            transition={{ delay: 0.3, duration: 0.8 }}
+          >
+            {score >= 300 ? '🎉' : '😢'}
+          </motion.div>
           <h1 className="text-4xl font-black text-orange-300 mb-2">ゲーム終了</h1>
           <p className="text-orange-400 mb-6">{rank}</p>
 
-          <div className="bg-orange-950/60 border border-orange-800/40 rounded-2xl p-8 mb-4">
+          <div className="bg-orange-950/60 border border-orange-800/40 rounded-2xl p-8 mb-4 relative overflow-hidden">
+            {/* Glow bg */}
+            <div className="absolute inset-0 bg-gradient-to-br from-yellow-900/20 to-transparent pointer-events-none" />
             <p className="text-orange-300/70 text-sm mb-2">最終スコア</p>
-            <p className="text-6xl font-black text-yellow-400">{score.toLocaleString()}</p>
+            <motion.p
+              className="text-6xl font-black text-yellow-400"
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.5, type: 'spring', stiffness: 300, damping: 20 }}
+            >
+              {score.toLocaleString()}
+            </motion.p>
             <p className="text-orange-300/50 text-sm mt-1">コイン</p>
           </div>
 
@@ -1698,7 +1859,7 @@ export default function MalatangGame() {
               🏠 タイトル
             </button>
           </div>
-        </div>
+        </motion.div>
       </main>
     )
   }
@@ -1779,17 +1940,39 @@ export default function MalatangGame() {
 
   return (
     <>
-      {comboOverlay && <ComboFlashOverlay combo={comboOverlay} onDone={() => setComboOverlay(null)} />}
+      <AnimatePresence>
+        {comboOverlay && <ComboFlashOverlay combo={comboOverlay} onDone={() => setComboOverlay(null)} />}
+      </AnimatePresence>
       {showRecipeBook && <RecipeBookModal discovered={discoveredCombos} onClose={() => setShowRecipeBook(false)} />}
 
-      {/* Drop animations */}
-      {dropAnimations.map(da => (
-        <div key={da.id} className="fixed inset-0 flex items-center justify-center pointer-events-none z-40">
-          <div className="text-5xl animate-dropIn">{da.emoji}</div>
-        </div>
-      ))}
+      {/* Confetti for combo */}
+      <ConfettiEffect active={showConfetti} />
 
-      <main className={`min-h-screen flex flex-col p-3 gap-3 select-none max-w-5xl mx-auto ${isTutorialActive ? 'pointer-events-none' : ''}`}>
+      {/* Coin burst */}
+      <CoinBurst active={activeCoinBurst} amount={lastCoinAmount} x={50} y={40} />
+
+      {/* Drop animations */}
+      <AnimatePresence>
+        {dropAnimations.map(da => (
+          <motion.div
+            key={da.id}
+            className="fixed inset-0 flex items-center justify-center pointer-events-none z-40"
+            initial={{ opacity: 1, y: -40, scale: 1.5 }}
+            animate={{ opacity: 0, y: 10, scale: 0.8 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="text-5xl">{da.emoji}</div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      <motion.main
+        className={`min-h-screen flex flex-col p-3 gap-3 select-none max-w-5xl mx-auto ${isTutorialActive ? 'pointer-events-none' : ''}`}
+        animate={screenShake ? { x: [-4, 4, -3, 3, -2, 2, 0] } : { x: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{ background: 'linear-gradient(160deg, #1C0A00 0%, #2D1200 50%, #1C0A00 100%)' }}
+      >
 
         {/* Top bar */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1811,7 +1994,7 @@ export default function MalatangGame() {
                 {combo}連続🔥 ×{comboMultiplier}
               </span>
             )}
-            <span className="text-yellow-400 font-black">💰 {score.toLocaleString()}</span>
+            <span className="text-yellow-400 font-black">💰 <AnimatedScore value={score} /></span>
             <button onClick={() => setShowRecipeBook(true)} className="text-orange-300 hover:text-orange-100 text-lg" title="レシピ本">
               📖
             </button>
@@ -1822,11 +2005,18 @@ export default function MalatangGame() {
         <SatisfactionBar value={satisfaction} />
 
         {/* Timer */}
-        <div ref={timerRef2} className="w-full bg-orange-950 rounded-full h-3 overflow-hidden border border-orange-900">
-          <div className={`h-full rounded-full transition-all duration-1000 ${timerColor}`}
-            style={{ width: `${timerPct}%` }} />
+        <div ref={timerRef2} className="w-full bg-orange-950 rounded-full h-3 overflow-hidden border border-orange-900 relative">
+          <motion.div
+            className={`h-full rounded-full ${timerColor}`}
+            animate={{ width: `${timerPct}%` }}
+            transition={{ duration: 1, ease: 'linear' }}
+          />
+          {/* Shine */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent rounded-full pointer-events-none" />
         </div>
-        <div className="text-center text-xs text-orange-300/70 -mt-1">⏰ {timeLeft}秒</div>
+        <div className={`text-center text-xs text-orange-300/70 -mt-1 ${timerPct < 25 ? 'animate-pulse text-red-400 font-bold' : ''}`}>
+          ⏰ {timeLeft}秒
+        </div>
 
         {/* Customer Queue */}
         <div ref={customerRef}>
@@ -1844,9 +2034,15 @@ export default function MalatangGame() {
           <div className="bg-orange-950/60 border border-orange-700/40 rounded-2xl p-3 animate-fadeIn">
             <div className="flex items-center gap-3">
               <div className="flex flex-col items-center">
-                <span className={`text-4xl ${serveFeedback ? (serveFeedback.correct ? 'animate-customerReact' : 'animate-shake') : ''}`}>
-                  {activeCustomer?.reactionEmoji || displayOrder.customerEmoji}
-                </span>
+                <Character
+                  type={emojiToCharType(displayOrder.customerEmoji)}
+                  expression={
+                    activeCustomer?.reactionEmoji === '😊' ? 'happy'
+                    : activeCustomer?.reactionEmoji === '😤' ? 'angry'
+                    : 'excited'
+                  }
+                  size={56}
+                />
                 <span className="text-orange-300/70 text-xs">{displayOrder.customerName}</span>
                 {(() => {
                   const badge = customerTypeBadge(displayOrder.customerType)
@@ -1903,7 +2099,12 @@ export default function MalatangGame() {
         {/* Conveyor Belt */}
         <div ref={ingredientsRef}>
           <p className="text-orange-400/70 text-xs mb-1 font-bold">🏭 コンベア（食材をクリックして取ろう！）</p>
-          <ConveyorBelt items={conveyorItems} onGrab={grabConveyorItem} stage={shopStage} />
+          <ConveyorBeltComponent
+            items={conveyorItems}
+            onGrab={grabConveyorItem}
+            stage={shopStage}
+            getIngredient={getIngredientById}
+          />
         </div>
 
         {/* Spice selection row */}
@@ -1972,6 +2173,7 @@ export default function MalatangGame() {
                   onSelect={idx => setSelectedPot(idx)}
                   onServe={idx => handleServe(idx, false)}
                   isServing={isServing}
+                  spiceLevel={potSpices[i] ?? ''}
                 />
               </div>
             ))}
@@ -1982,15 +2184,24 @@ export default function MalatangGame() {
         <button ref={serveRef} className="hidden" aria-hidden="true" />
 
         {/* Coin animations */}
-        {coinAnimations.map(c => (
-          <div key={c.id} className="fixed pointer-events-none z-50 font-black text-2xl animate-coinPop"
-            style={{ left: '50%', top: '40%', transform: 'translateX(-50%)' }}>
-            <span className={c.positive ? 'text-yellow-400' : 'text-red-400'}>
-              {c.positive ? '+' : '-'}{c.amount}💰
-            </span>
-          </div>
-        ))}
-      </main>
+        <AnimatePresence>
+          {coinAnimations.map(c => (
+            <motion.div
+              key={c.id}
+              className="fixed pointer-events-none z-50 font-black text-2xl"
+              style={{ left: '50%', top: '40%', transform: 'translateX(-50%)' }}
+              initial={{ y: 0, opacity: 1, scale: 1 }}
+              animate={{ y: -60, opacity: 0, scale: 1.5 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8 }}
+            >
+              <span className={c.positive ? 'text-yellow-400' : 'text-red-400'}>
+                {c.positive ? '+' : '-'}{c.amount}💰
+              </span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </motion.main>
 
       {/* Tutorial overlay */}
       {isTutorialActive && (
