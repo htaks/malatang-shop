@@ -1,0 +1,41 @@
+# malatang-shop プロジェクト構造調査レポート
+
+## 概要
+「マーラータン屋さん」ゲーム。Next.js/React/TS実装(app/)と、旧HTML+JS実装(index.html+game.js)が共存。移行途中/移行済みと推測。
+
+## 中核ファイルTOP5
+1. package.json … 依存・スクリプト定義。全体把握の入口（最重要）
+2. app/page.tsx … Next.js App Routerの実行エントリーポイント
+3. app/components/RestaurantScene.tsx … 各要素を統合する実質メインステージ
+4. app/types.ts … 全コンポーネント共通の型基盤
+5. game.js … レガシー実装の心臓部（移行判断の鍵）
+
+## カテゴリ別整理
+### エントリーポイント
+- app/layout.tsx : 全画面共通レイアウト/グローバル注入点
+- app/page.tsx : ルート画面本体
+- index.html + game.js : 旧実装エントリ＋ロジック
+
+### 主要ゲームロジック (app/components/)
+- RestaurantScene.tsx : シーン統合（★★★）
+- Pot.tsx : 鍋＝核メカニクス（★★）
+- ConveyorBelt.tsx : 具材搬送（★★）
+- Character.tsx / ShopOwner.tsx : キャラ＆インタラクション（★★）
+- Particles.tsx : 演出（★）
+- hooks/useBGM.ts : BGM制御フック（★）
+- types.ts : 型集約（★★）
+
+### 設定/品質
+- next.config.js / tsconfig.json : ビルド・TS設定
+- tailwind/postcss/globals.css : スタイリング基盤
+- playwright.config.ts + tests/game.spec.ts : E2Eテスト＝仕様書的役割
+
+## 注意喚起
+- 二重実装(旧game.js / 新app)の共存 → package.jsonのscriptsで正式版を確定すべき
+- テストが新旧どちらを対象にしているか要確認
+- assets/sprites がcustomer1.pngのみ → 画像欠落リスク
+
+## 推奨ネクストアクション
+1. package.json精読でビルド経路と正式実装を確定
+2. game.jsの廃止可否を判断（技術的負債解消）
+3. RestaurantScene.tsxを起点にゲームロジック詳細解析
