@@ -1,0 +1,31 @@
+# 調査報告：htaks/malatang-shop の README.md 取得依頼について
+
+## 結論
+依頼された README.md ファイルは、提示されたリポジトリのファイル構成内に **存在しません**。
+したがって「原文をそのまま出力」することは不可能です。
+
+## 根拠
+共有されたファイル構成リストに README.md（および readme.md / Readme.md 等の表記揺れ）が含まれていない。
+
+## 確認済みファイル一覧（README系ファイルなし）
+- .gitignore
+- app/ 配下（Character.tsx, ConveyorBelt.tsx, Particles.tsx, Pot.tsx, RestaurantScene.tsx, ShopOwner.tsx, globals.css, hooks/useBGM.ts, layout.tsx, page.tsx, types.ts）
+- assets/sprites/customer1.png
+- game.js
+- index.html
+- next-env.d.ts
+- next.config.js
+- package-lock.json
+- package.json
+- playwright.config.ts
+- postcss.config.js
+- tailwind.config.js
+- tests/game.spec.ts
+- tsconfig.json
+
+## 重要事項
+存在しないファイルの中身を捏造して出力することはしていません（ハルシネーション防止）。
+
+## 推奨アクション
+1. メイト側でファイルパス・表記揺れを再確認
+2. README.md が未作成であれば、新規作成タスクとして再依頼を推奨（その場合は推測ベースの新規成果物となる旨を明記して対応可能）
